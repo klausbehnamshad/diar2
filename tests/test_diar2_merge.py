@@ -157,15 +157,46 @@ def test_mhm_between_two_sentences_of_other_speaker_stays_einwurf(tmp_path):
     assert res["words"][len(b1)]["einwurf"]
 
 
-def test_ja_answer_followed_by_questioner_is_einwurf(tmp_path):
-    # rule: the previous turn's speaker goes on right after it -> Einwurf
-    q = seq("Waren Sie dort?", 0.0)
+def test_ja_answer_to_question_is_own_turn_even_if_questioner_goes_on(tmp_path):
+    # Nachtrag (a): "Waren Sie verheiratet?" (I) / "Ja." (B) / "Und Kinder?" (I)
+    q = seq("Waren Sie verheiratet?", 0.0)
     ja = [("Ja.", 1.4, 1.7)]
-    q2 = seq("Und wie lange?", 2.2)
-    segs = [(0.0, 1.2, "speaker_1"), (1.35, 1.75, "speaker_2"), (2.15, 3.5, "speaker_1")]
+    q2 = seq("Und haben Sie auch Kinder?", 2.2)  # long enough not to be a short turn
+    segs = [(0.0, 1.2, "speaker_1"), (1.35, 1.75, "speaker_2"), (2.15, 4.0, "speaker_1")]
     res = run(tmp_path, q + ja + q2, segs)
+    assert [t["speaker"] for t in res["turns"]] == ["Interviewer", "Interviewee", "Interviewer"]
+    assert all(t["einwuerfe"] == [] for t in res["turns"])
+    assert not res["words"][len(q)]["einwurf"]
+    txt = (tmp_path / "out.diar2.txt").read_text()
+    assert "Interviewee: Ja.\n" in txt
+    assert res["sentences"][1]["kurzantwort"] is True
+    # a recognised answer is not flagged as a suspicious short turn
+    assert not any(it["art"] == "sehr kurzer Turn" for it in res["hoerliste"])
+
+
+def test_ja_after_statement_with_questioner_going_on_is_einwurf(tmp_path):
+    # previous sentence is no question -> the old rule applies unchanged
+    s1 = seq("Wir sind dann umgezogen.", 0.0)
+    ja = [("Ja.", 1.6, 1.9)]
+    s2 = seq("Das war neunzehnhundertsechzig.", 2.4)
+    segs = [(0.0, 1.5, "speaker_1"), (1.55, 1.95, "speaker_2"), (2.35, 3.6, "speaker_1")]
+    res = run(tmp_path, s1 + ja + s2, segs)
     assert [t["speaker"] for t in res["turns"]] == ["Interviewer"]
-    assert res["words"][len(q)]["einwurf"]
+    assert res["words"][len(s1)]["einwurf"]
+
+
+def test_mhm_mid_narration_after_earlier_question_stays_einwurf(tmp_path):
+    # Nachtrag (c): the question is not the directly preceding sentence
+    q = seq("Wie war das?", 0.0)
+    b1 = seq("Das war eine schwere Zeit.", 1.5)
+    mhm = [("Mhm.", b1[-1][2] + 0.3, b1[-1][2] + 0.7)]
+    b2 = seq("Wir hatten sehr wenig.", mhm[0][2] + 0.4)
+    segs = [(0.0, 1.2, "speaker_1"), (1.45, b1[-1][2] + 0.05, "speaker_2"),
+            (mhm[0][1], mhm[0][2], "speaker_1"), (b2[0][1] - 0.05, 9.0, "speaker_2")]
+    res = run(tmp_path, q + b1 + mhm + b2, segs)
+    assert [t["speaker"] for t in res["turns"]] == ["Interviewer", "Interviewee"]
+    assert res["turns"][1]["einwuerfe"][0]["text"] == "Mhm."
+    assert res["sentences"][2]["kurzantwort"] is False
 
 
 def test_overlap_marked_on_word_and_listed(tmp_path):
@@ -333,10 +364,18 @@ def test_selftest_dialog_short_answer_and_einwurf(tmp_path):
     words.sort(key=lambda w: w[1])
     res = run(tmp_path, words, segs)
     turns = res["turns"]
-    assert [x["speaker"] for x in turns] == ["Interviewer", "Interviewee"] * 6 + ["Interviewer"]
+    assert [x["speaker"] for x in turns] == ["Interviewer", "Interviewee"] * 8 + ["Interviewer"]
     txt = (tmp_path / "out.diar2.txt").read_text()
     # case a: "Ja." opens the Interviewee turn, "An Herrn Weber." continues it
     assert "Interviewee: Ja. An Herrn Weber." in txt
+    # Nachtrag: "Ja." answering "Waren Sie verheiratet?" is its own turn,
+    # although the Interviewer goes on with the next question
+    texts = [(x["speaker"], " ".join(res["sentences"][i]["text"] for i in x["sentences"]))
+             for x in turns]
+    k = texts.index(("Interviewer", "Waren Sie verheiratet?"))
+    assert texts[k + 1:k + 4] == [("Interviewee", "Ja."),
+                                  ("Interviewer", "Und haben Sie Kinder?"),
+                                  ("Interviewee", "Zwei Töchter und einen Sohn.")]
     # case b: both "Mhm." by the Interviewer are Einwürfe inside Interviewee turns
     mhm = [e for x in turns for e in x["einwuerfe"]]
     assert [(e["speaker"], e["text"]) for e in mhm] == [("Interviewer", "Mhm."),

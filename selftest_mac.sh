@@ -95,6 +95,10 @@ I|Mhm.|seq|0.3
 B|Später bin ich dann in die Stadt gezogen und habe in einer Fabrik gearbeitet. Dort habe ich auch meinen Mann kennengelernt.|seq|0.5
 I|Wie hat sich das Leben in der Stadt für Sie angefühlt?|seq|0.7
 B|Am Anfang war es laut und fremd. Aber nach ein paar Monaten habe ich mich daran gewöhnt, und heute möchte ich nicht mehr zurück.|seq|0.6
+I|Waren Sie verheiratet?|seq|0.7
+B|Ja.|seq|0.5
+I|Und haben Sie Kinder?|seq|0.6
+B|Zwei Töchter und einen Sohn.|seq|0.5
 I|Vielen Dank für das Gespräch.|seq|0.8
 EOF
 : >"$WORK/plan.tsv"

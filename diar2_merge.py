@@ -131,6 +131,7 @@ class Sentence:
     speaker: str | None = None
     raw_switch: bool = False
     origin: int = -1                 # index before splitting
+    answer: bool = False             # "Ja." answering a question: own turn
 
     @property
     def start(self):
@@ -387,15 +388,20 @@ def smooth(sentences) -> list:
             w.speaker = (w.raw or maj) if w.backchannel else maj
         if maj is not None:
             last = maj
-    # 5. a sentence of only "ja"/"mhm" is an Einwurf only if the previous
-    #    turn's speaker goes on right after it; otherwise it is a short
-    #    answer and opens (or continues) a turn of its own speaker
+    # 5. a sentence of only "ja"/"mhm" that directly follows a question
+    #    ("?") of the other speaker is an answer and forms its own turn,
+    #    whoever speaks next. Otherwise it is an Einwurf only if the previous
+    #    turn's speaker goes on right after it; else it is a short answer
+    #    and opens (or continues) a turn of its own speaker.
     prev = None
     for k, s in enumerate(out):
         if s.words and all(w.backchannel for w in s.words):
+            before = out[k - 1] if k > 0 else None
+            s.answer = (before is not None and before.speaker != s.speaker
+                        and before.words[-1].text.rstrip().endswith("?"))
             nxt = next((t.speaker for t in out[k + 1:]
                         if not all(w.backchannel for w in t.words)), None)
-            if prev is not None and s.speaker != prev and nxt == prev:
+            if not s.answer and prev is not None and s.speaker != prev and nxt == prev:
                 continue
             for w in s.words:
                 w.backchannel = False
@@ -508,9 +514,11 @@ def review_list(sentences, turns, segs, words, names, second_spans=None) -> list
         items.append({"art": "Sprecherwechsel im Satz", "start": group[0].start,
                       "end": group[-1].end,
                       "text": join_words(w.text for g in group for w in g.words)})
+    answers = {s.idx for s in sentences if s.answer}
     for t in turns:
         dur = t["end"] - t["start"]
-        if dur < SHORT_TURN_S:
+        # a recognised answer to a question ("Ja.") is expected to be short
+        if dur < SHORT_TURN_S and not set(t["sentences"]) <= answers:
             text = " ".join(x[2] for x in t["items"] if x[0] == "text")
             items.append({"art": "sehr kurzer Turn", "start": t["start"], "end": t["end"],
                           "text": f"{names.get(t['speaker'], t['speaker'])}: {text}"})
@@ -650,7 +658,8 @@ def run(words_json, rttm, out_prefix, second_rttm=None, names_opt="Interviewer,I
         "words": [w.as_dict(names) for w in words],
         "sentences": [{"i": s.idx, "start": round(s.start, 3), "end": round(s.end, 3),
                        "speaker": names.get(s.speaker, s.speaker), "text": s.text,
-                       "sprecherwechsel_im_satz": s.raw_switch} for s in sentences],
+                       "sprecherwechsel_im_satz": s.raw_switch,
+                       "kurzantwort": s.answer} for s in sentences],
         "turns": [{"speaker": names.get(t["speaker"], t["speaker"]), "start": round(t["start"], 3),
                    "end": round(t["end"], 3), "sentences": t["sentences"],
                    "einwuerfe": [dict(e, speaker=names.get(e["speaker"], e["speaker"]),
