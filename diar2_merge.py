@@ -50,6 +50,10 @@ MERGE_GAP_S = 0.5
 CHECK_HEAD_S = 60.0
 # SRT cues are cut at sentence ends or after this many seconds.
 SRT_MAX_CUE_S = 7.0
+# A word without any timestamp (neither WhisperX nor mlx-whisper) is placed
+# in at most this window directly before the next timed word, so it never
+# spans a pause.
+ESTIMATE_MAX_S = 0.5
 
 BACKCHANNEL_TOKENS = {
     "mhm", "mhmm", "hm", "hmm", "mm", "mmh", "aha", "ah", "ja", "jaja", "jo",
@@ -61,7 +65,7 @@ _THRESHOLDS = [
     "GAP_TOLERANCE_S", "SENTENCE_GAP_S", "BACKCHANNEL_MAX_S",
     "BACKCHANNEL_MAX_WORDS", "SPLIT_MIN_WORDS", "SPLIT_MIN_S", "SHORT_TURN_S",
     "OVERLAP_MIN_S", "DISAGREE_MIN_S", "MERGE_GAP_S", "CHECK_HEAD_S",
-    "SRT_MAX_CUE_S",
+    "SRT_MAX_CUE_S", "ESTIMATE_MAX_S",
 ]
 
 
@@ -94,6 +98,7 @@ class Word:
     end: float
     score: float | None
     timed: bool = True
+    time_source: str = "whisperx"    # whisperx | mlx | geschaetzt
     raw: str | None = None           # speaker by midpoint, before smoothing
     raw_set: tuple = ()              # all speakers active at the midpoint
     speaker: str | None = None       # after smoothing
@@ -110,7 +115,7 @@ class Word:
         return {
             "i": self.i, "text": self.text,
             "start": round(self.start, 3), "end": round(self.end, 3),
-            "score": self.score, "timed": self.timed,
+            "score": self.score, "timed": self.timed, "time_source": self.time_source,
             "speaker": names.get(self.speaker, self.speaker),
             "speaker_raw": self.raw, "overlap": self.overlap,
             "overlap_speakers": list(self.raw_set) if self.overlap else [],
@@ -164,27 +169,50 @@ def write_rttm(path, segs, recording_id="diar2") -> None:
 
 
 def load_words(data: dict) -> list:
-    """Flatten segments -> words; fill missing times from neighbours."""
-    raw = []
+    """Flatten segments -> words.
+
+    Times come from WhisperX, or from mlx-whisper where diar2_stages.py could
+    match the word (time_source). Words still without a time are estimated:
+    at most ESTIMATE_MAX_S directly before the next timed word, never across
+    the pause before it.
+    """
+    default_source = "whisperx" if data.get("alignment") == "whisperx" else "mlx"
+    words = []
     for seg in data.get("segments", []):
         for w in seg.get("words") or []:
             text = (w.get("word") if w.get("word") is not None else w.get("text", "")).strip()
             if not text:
                 continue
             score = w.get("score", w.get("probability"))
-            raw.append((text, w.get("start"), w.get("end"),
-                        None if score is None else round(float(score), 4)))
-    words = [Word(i, t, s if s is not None else -1.0, e if e is not None else -1.0, sc,
-                  timed=s is not None and e is not None)
-             for i, (t, s, e, sc) in enumerate(raw)]
-    # WhisperX leaves e.g. digits unaligned: borrow the neighbours' times.
-    for k, w in enumerate(words):
-        if w.timed:
+            s, e = w.get("start"), w.get("end")
+            timed = s is not None and e is not None
+            words.append(Word(
+                len(words), text, s if timed else -1.0, e if timed else -1.0,
+                None if score is None else round(float(score), 4), timed=timed,
+                time_source=w.get("time_source", default_source) if timed else "geschaetzt"))
+    k = 0
+    while k < len(words):
+        if words[k].timed:
+            k += 1
             continue
-        prev_end = next((words[j].end for j in range(k - 1, -1, -1) if words[j].timed), 0.0)
-        next_start = next((words[j].start for j in range(k + 1, len(words)) if words[j].timed), None)
-        w.start = prev_end
-        w.end = next_start if next_start is not None and next_start > prev_end else prev_end + 0.1
+        j = k
+        while j < len(words) and not words[j].timed:
+            j += 1
+        run = words[k:j]
+        prev_end = words[k - 1].end if k > 0 else None
+        next_start = words[j].start if j < len(words) else None
+        if next_start is not None:
+            lo = max(next_start - ESTIMATE_MAX_S, prev_end if prev_end is not None else 0.0, 0.0)
+            hi = next_start
+        else:
+            lo = prev_end if prev_end is not None else 0.0
+            hi = lo + ESTIMATE_MAX_S
+        if hi <= lo:  # no room: squeeze in right at the boundary
+            hi = lo + 0.01 * len(run)
+        step = (hi - lo) / len(run)
+        for n, w in enumerate(run):
+            w.start, w.end = lo + n * step, lo + (n + 1) * step
+        k = j
     return words
 
 
@@ -359,6 +387,21 @@ def smooth(sentences) -> list:
             w.speaker = (w.raw or maj) if w.backchannel else maj
         if maj is not None:
             last = maj
+    # 5. a sentence of only "ja"/"mhm" is an Einwurf only if the previous
+    #    turn's speaker goes on right after it; otherwise it is a short
+    #    answer and opens (or continues) a turn of its own speaker
+    prev = None
+    for k, s in enumerate(out):
+        if s.words and all(w.backchannel for w in s.words):
+            nxt = next((t.speaker for t in out[k + 1:]
+                        if not all(w.backchannel for w in t.words)), None)
+            if prev is not None and s.speaker != prev and nxt == prev:
+                continue
+            for w in s.words:
+                w.backchannel = False
+                w.speaker = s.speaker
+        if s.speaker is not None:
+            prev = s.speaker
     return out
 
 

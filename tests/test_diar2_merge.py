@@ -129,6 +129,45 @@ def test_real_answer_turn_is_not_einwurf(tmp_path):
     assert len(res["turns"]) == 2
 
 
+def test_short_answer_opens_turn_when_same_speaker_goes_on(tmp_path):
+    # Abnahme 1a: "Erinnern Sie sich?" (I) / "Ja." (B) / "An Herrn Weber." (B)
+    q = seq("Erinnern Sie sich?", 0.0)
+    ja = [("Ja.", 1.6, 1.9)]
+    b = seq("An Herrn Weber.", 2.6)
+    segs = [(0.0, 1.3, "speaker_1"), (1.55, 1.95, "speaker_2"), (2.55, 3.8, "speaker_2")]
+    res = run(tmp_path, q + ja + b, segs)
+    assert [t["speaker"] for t in res["turns"]] == ["Interviewer", "Interviewee"]
+    assert res["turns"][0]["einwuerfe"] == []
+    assert not res["words"][len(q)]["einwurf"]
+    txt = (tmp_path / "out.diar2.txt").read_text()
+    assert "Interviewee: Ja. An Herrn Weber." in txt
+    assert not any(it["art"] == "sehr kurzer Turn" for it in res["hoerliste"])
+
+
+def test_mhm_between_two_sentences_of_other_speaker_stays_einwurf(tmp_path):
+    # Abnahme 1b: "Mhm." (I) zwischen zwei B-Sätzen
+    b1 = seq("Ich habe eine Lehre begonnen.", 0.0)
+    mhm = [("Mhm.", b1[-1][2] + 0.3, b1[-1][2] + 0.7)]
+    b2 = seq("Später bin ich in die Stadt gezogen.", mhm[0][2] + 0.4)
+    segs = [(0.0, b1[-1][2] + 0.05, "speaker_2"), (mhm[0][1], mhm[0][2], "speaker_1"),
+            (b2[0][1] - 0.05, 9.0, "speaker_2")]
+    res = run(tmp_path, b1 + mhm + b2, segs, names="Interviewee,Interviewer")
+    assert [t["speaker"] for t in res["turns"]] == ["Interviewee"]
+    assert res["turns"][0]["einwuerfe"][0]["speaker"] == "Interviewer"
+    assert res["words"][len(b1)]["einwurf"]
+
+
+def test_ja_answer_followed_by_questioner_is_einwurf(tmp_path):
+    # rule: the previous turn's speaker goes on right after it -> Einwurf
+    q = seq("Waren Sie dort?", 0.0)
+    ja = [("Ja.", 1.4, 1.7)]
+    q2 = seq("Und wie lange?", 2.2)
+    segs = [(0.0, 1.2, "speaker_1"), (1.35, 1.75, "speaker_2"), (2.15, 3.5, "speaker_1")]
+    res = run(tmp_path, q + ja + q2, segs)
+    assert [t["speaker"] for t in res["turns"]] == ["Interviewer"]
+    assert res["words"][len(q)]["einwurf"]
+
+
 def test_overlap_marked_on_word_and_listed(tmp_path):
     words = seq("Das weiß ich nicht mehr so genau.", 0.0)
     segs = [(0.0, 3.0, "speaker_1"), (0.7, 1.4, "speaker_2")]
@@ -160,12 +199,45 @@ def test_gap_nearest_within_tolerance_else_majority(tmp_path):
     assert {w["speaker"] for w in res["words"]} == {"Interviewer"}
 
 
-def test_missing_timestamps_are_interpolated(tmp_path):
-    words = [("Es", 0.0, 0.2), ("war", 0.25, 0.5), ("1968", None, None), ("so.", 1.2, 1.4)]
-    res = run(tmp_path, words, [(0.0, 2.0, "speaker_1")])
+def test_untimed_word_stays_before_next_word_and_keeps_pause(tmp_path):
+    # Abnahme 2: "Er war" bis 5,1 s, "1968" ohne Zeit, "da." ab 7,8 s
+    words = [("Er", 4.6, 4.8), ("war", 4.85, 5.1), ("1968", None, None), ("da.", 7.8, 8.1)]
+    res = run(tmp_path, words, [(4.5, 8.2, "speaker_1")])
     w = res["words"][2]
-    assert w["timed"] is False
-    assert w["start"] == pytest.approx(0.5) and w["end"] == pytest.approx(1.2)
+    assert w["timed"] is False and w["time_source"] == "geschaetzt"
+    assert w["start"] == pytest.approx(7.3) and w["end"] == pytest.approx(7.8)
+    assert w["start"] > 5.1 + m.SENTENCE_GAP_S  # does not lie over the gap
+    sents = res["sentences"]
+    assert [s["text"] for s in sents] == ["Er war", "1968 da."]  # pause kept as boundary
+    assert [x["time_source"] for x in res["words"]] == ["whisperx", "whisperx", "geschaetzt",
+                                                        "whisperx"]
+
+
+def test_untimed_run_shares_window_and_short_gap(tmp_path):
+    words = [("Es", 0.0, 0.2), ("war", 0.25, 0.5), ("19", None, None), ("68", None, None),
+             ("so.", 0.8, 1.0)]
+    res = run(tmp_path, words, [(0.0, 2.0, "speaker_1")])
+    a, b = res["words"][2], res["words"][3]
+    assert a["start"] == pytest.approx(0.5) and a["end"] == pytest.approx(0.65)
+    assert b["start"] == pytest.approx(0.65) and b["end"] == pytest.approx(0.8)
+
+
+def test_untimed_word_at_end(tmp_path):
+    res = run(tmp_path, [("Das", 1.0, 1.2), ("war's.", None, None)], [(0.9, 2.0, "speaker_1")])
+    w = res["words"][1]
+    assert w["start"] == pytest.approx(1.2) and w["end"] == pytest.approx(1.7)
+
+
+def test_time_source_from_input_and_fallback(tmp_path):
+    p = tmp_path / "w.json"
+    p.write_text(json.dumps({"alignment": "whisperx", "segments": [{"words": [
+        {"word": "Eins", "start": 0.0, "end": 0.3, "time_source": "whisperx"},
+        {"word": "1968.", "start": 0.4, "end": 0.9, "time_source": "mlx"}]}]}))
+    ws = m.load_words(json.loads(p.read_text()))
+    assert [w.time_source for w in ws] == ["whisperx", "mlx"]
+    ws = m.load_words({"alignment": "fallback", "segments": [{"words": [
+        {"word": "Eins", "start": 0.0, "end": 0.3}]}]})
+    assert ws[0].time_source == "mlx"
 
 
 def test_second_opinion_label_mapping_and_disagreement(tmp_path):
@@ -236,3 +308,38 @@ def test_cli(tmp_path, capsys):
     r = rttm(tmp_path, [(0.0, 1.0, "speaker_1")])
     assert m.main(["--words", str(w), "--rttm", str(r), "--out-prefix", str(tmp_path / "x")]) == 0
     assert "Wörter 1" in capsys.readouterr().out
+
+
+def _selftest_dialog():
+    text = (Path(__file__).resolve().parents[1] / "selftest_mac.sh").read_text(encoding="utf-8")
+    body = text.split("dialog.txt\" <<'EOF'\n", 1)[1].split("\nEOF\n", 1)[0]
+    return [line.split("|") for line in body.splitlines() if line.strip()]
+
+
+def test_selftest_dialog_short_answer_and_einwurf(tmp_path):
+    # Abnahme 1c: the dialogue in selftest_mac.sh, timed the way compose() places it
+    words, segs = [], []
+    t, prev_start = 0.5, 0.5
+    for spk, text, mode, secs in _selftest_dialog():
+        n = len(text.split())
+        start = prev_start + float(secs) if mode == "overlay" else t + float(secs)
+        ws = seq(text, start)
+        end = ws[-1][2]
+        if mode != "overlay":
+            prev_start, t = start, end
+        words += ws
+        segs.append((start - 0.02, end + 0.02, "speaker_1" if spk == "I" else "speaker_2"))
+        assert len(ws) == n
+    words.sort(key=lambda w: w[1])
+    res = run(tmp_path, words, segs)
+    turns = res["turns"]
+    assert [x["speaker"] for x in turns] == ["Interviewer", "Interviewee"] * 6 + ["Interviewer"]
+    txt = (tmp_path / "out.diar2.txt").read_text()
+    # case a: "Ja." opens the Interviewee turn, "An Herrn Weber." continues it
+    assert "Interviewee: Ja. An Herrn Weber." in txt
+    # case b: both "Mhm." by the Interviewer are Einwürfe inside Interviewee turns
+    mhm = [e for x in turns for e in x["einwuerfe"]]
+    assert [(e["speaker"], e["text"]) for e in mhm] == [("Interviewer", "Mhm."),
+                                                       ("Interviewer", "Mhm.")]
+    assert all(x["speaker"] == "Interviewee" for x in turns if x["einwuerfe"])
+    assert not any(it["art"] == "sehr kurzer Turn" for it in res["hoerliste"])

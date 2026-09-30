@@ -42,10 +42,12 @@ def align(segments, model, meta, audio, device, return_char_alignments=False):
     for s in segments:
         toks = s["text"].split()
         step = (s["end"] - s["start"]) / len(toks)
-        out.append({"start": s["start"], "end": s["end"], "text": s["text"],
-                    "words": [{"word": t, "start": s["start"] + k * step,
-                               "end": s["start"] + (k + 1) * step, "score": 0.95}
-                              for k, t in enumerate(toks)]})
+        words = [{"word": t, "start": s["start"] + k * step,
+                  "end": s["start"] + (k + 1) * step, "score": 0.95}
+                 for k, t in enumerate(toks)]
+        if toks[-1] == "schwer.":  # WhisperX leaves a word unaligned
+            del words[-1]["start"], words[-1]["end"]
+        out.append({"start": s["start"], "end": s["end"], "text": s["text"], "words": words})
     return {"segments": out}
 '''
 
@@ -105,6 +107,10 @@ def test_full_run_writes_outputs_and_stages(env):
         assert (out / f"probe interview.{ext}").exists(), ext
     res = json.loads((out / "probe interview.diar2.json").read_text())
     assert res["alignment"] == "whisperx"
+    last = res["words"][-1]
+    assert last["text"] == "schwer." and last["time_source"] == "mlx"
+    assert (last["start"], last["end"]) == (2.35, 2.9)  # mlx time of the same word
+    assert {w["time_source"] for w in res["words"][:-1]} == {"whisperx"}
     assert [t["speaker"] for t in res["turns"]] == ["Interviewer", "Interviewee"]
     assert res["meta"]["input"] == "probe interview.mp4"
     assert len(res["meta"]["input_sha256"]) == 64
@@ -127,6 +133,7 @@ def test_align_failure_falls_back(env):
     assert "alignment=fallback" in r.stdout
     res = json.loads((home / "Downloads/_outputs/probe interview.diar2.json").read_text())
     assert res["alignment"] == "fallback"
+    assert {w["time_source"] for w in res["words"]} == {"mlx"}
 
 
 def test_second_run_resumes_and_device_env(env):

@@ -13,7 +13,9 @@
 #     whisper-large-v3-turbo (mlx), deutsches Alignment-Modell + NLTK punkt_tab,
 #     pyannote community-1 (Token aus ~/.hf_token)
 #  6. schreibt ~/.config/diar2/paths.env, verlinkt den Ordner nach
-#     ~/Downloads/.ohtools/diar2 und trägt "source .../diar2.sh" in ~/.zshrc ein
+#     ~/Downloads/.ohtools/diar2 und trägt "source .../diar2.sh" in die
+#     Startdatei der Login-Shell ein ($SHELL: bash -> ~/.bash_profile,
+#     zsh -> ~/.zshrc, unbekannt -> beide; nie doppelt)
 #  7. eine Zeile pro Komponente: installiert ja/nein, Version
 set -euo pipefail
 
@@ -172,11 +174,30 @@ mkdir -p "$OHTOOLS"
 if [ "$HERE" != "$OHTOOLS/diar2" ]; then
     ln -sfn "$HERE" "$OHTOOLS/diar2"
 fi
+# --- shell-eintrag: begin (tests/test_diar2_install.py führt diesen Block aus)
+# rc_files_for_shell SHELL: Startdatei(en) der Login-Shell
+rc_files_for_shell() {
+    case "$(basename "${1:-unbekannt}")" in
+        bash) echo "$HOME/.bash_profile" ;;
+        zsh) echo "$HOME/.zshrc" ;;
+        *) echo "$HOME/.bash_profile"; echo "$HOME/.zshrc" ;;
+    esac
+}
+# add_source_line DATEI ZEILE: nur eintragen, wenn .ohtools/diar2/diar2.sh
+# dort noch nicht vorkommt (egal ob als ~/... oder als absoluter Pfad)
+add_source_line() {
+    if grep -qF ".ohtools/diar2/diar2.sh" "$1" 2>/dev/null; then
+        echo "bereits eingetragen: ~/$(basename "$1")"
+    else
+        echo "$2" >>"$1"
+        echo "eingetragen in ~/$(basename "$1"): $2"
+    fi
+}
 source_line="source \"$OHTOOLS/diar2/diar2.sh\"  # diar2"
-if ! grep -qF "$OHTOOLS/diar2/diar2.sh" "$HOME/.zshrc" 2>/dev/null; then
-    echo "$source_line" >>"$HOME/.zshrc"
-    echo "in ~/.zshrc eingetragen: $source_line"
-fi
+while read -r rc; do
+    add_source_line "$rc" "$source_line"
+done < <(rc_files_for_shell "${SHELL:-}")
+# --- shell-eintrag: end
 
 # --- 7. Übersicht ---------------------------------------------------------------------------------
 step "7 Übersicht"

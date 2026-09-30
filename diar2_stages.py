@@ -12,8 +12,10 @@ result and exits, so the next stage starts with that memory released.
 from __future__ import annotations
 
 import argparse
+import difflib
 import json
 import os
+import re
 import sys
 import wave
 from pathlib import Path
@@ -67,10 +69,41 @@ def transcribe(args):
     print(f"segments={len(segments)} language={result.get('language')}")
 
 
+def _norm(text):
+    return re.sub(r"[^\wäöüß]", "", (text or "").lower())
+
+
+def fill_from_mlx(aligned_segments, mlx_segments):
+    """Give WhisperX words without start/end the mlx-whisper time of the same
+    word. Words are matched over the normalised word sequence (difflib), so a
+    word is only filled where both sequences agree. Sets time_source on every
+    word: whisperx, mlx, or nothing (left for diar2_merge.load_words).
+    Returns the number of words filled from mlx."""
+    ax = [w for s in aligned_segments for w in s.get("words", [])]
+    mx = [w for s in mlx_segments for w in s.get("words", [])
+          if w.get("start") is not None and w.get("end") is not None]
+    for w in ax:
+        if w.get("start") is not None and w.get("end") is not None:
+            w["time_source"] = "whisperx"
+    matcher = difflib.SequenceMatcher(None, [_norm(w.get("word")) for w in ax],
+                                      [_norm(w.get("word")) for w in mx], autojunk=False)
+    filled = 0
+    for a0, m0, size in matcher.get_matching_blocks():
+        for k in range(size):
+            w, m = ax[a0 + k], mx[m0 + k]
+            if w.get("start") is None or w.get("end") is None:
+                w["start"], w["end"], w["time_source"] = m["start"], m["end"], "mlx"
+                filled += 1
+    return filled
+
+
 def fallback(args, reason="align nicht gelaufen"):
     data = json.loads(Path(args.inp).read_text(encoding="utf-8"))
     data["alignment"] = "fallback"
     data["alignment_note"] = reason
+    for s in data.get("segments", []):
+        for w in s.get("words", []):
+            w["time_source"] = "mlx"
     _write_json(args.out, data)
     print(f"alignment=fallback ({reason})")
 
@@ -93,15 +126,17 @@ def align(args):
         words = []
         for w in s.get("words", []):
             n_words += 1
-            n_timed += "start" in w and "end" in w
+            n_timed += w.get("start") is not None and w.get("end") is not None
             words.append({"word": w.get("word", ""), "start": w.get("start"),
                           "end": w.get("end"), "score": w.get("score")})
         out["segments"].append({"start": s.get("start"), "end": s.get("end"),
                                 "text": s.get("text", ""), "words": words})
     if n_words == 0:
         return fallback(args, "align lieferte keine Wörter")
+    filled = fill_from_mlx(out["segments"], data["segments"])
     _write_json(args.out, out)
-    print(f"alignment=whisperx words={n_words} timed={n_timed}")
+    print(f"alignment=whisperx words={n_words} timed={n_timed} from_mlx={filled} "
+          f"untimed={n_words - n_timed - filled}")
 
 
 def pyannote(args):

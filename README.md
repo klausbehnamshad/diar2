@@ -24,7 +24,9 @@ bash selftest_mac.sh     # ~/Downloads/_outputs/diar2_selftest.txt
 ```
 
 `install_mac.sh` schreibt `~/.config/diar2/paths.env`, verlinkt diesen Ordner nach
-`~/Downloads/.ohtools/diar2` und trägt `source ~/Downloads/.ohtools/diar2/diar2.sh` in `~/.zshrc` ein.
+`~/Downloads/.ohtools/diar2` und trägt `source ~/Downloads/.ohtools/diar2/diar2.sh` in die Startdatei der Login-Shell ein:
+`~/.bash_profile` bei bash, `~/.zshrc` bei zsh (nach `$SHELL`), bei unbekannter Shell in beide. Eine vorhandene Zeile mit
+`.ohtools/diar2/diar2.sh` wird erkannt, es kommt nichts doppelt.
 `transkript-tools.sh` und die conda-Umgebung `whisperx` bleiben unberührt.
 Der Selbsttest setzt `DIAR2_DEVICE_DEFAULT=metal` nur, wenn Metal und CPU dieselben Segmente liefern.
 
@@ -48,9 +50,11 @@ Alle Schwellen der Glättung stehen oben in `diar2_merge.py` und lassen sich als
 
 ## Glättung und Hörliste
 
+- Wortzeiten: von WhisperX; fehlt dort eine Zeit (oft bei Zahlen), die mlx-whisper-Zeit desselben Worts. Nur wenn auch das nicht zuzuordnen ist, wird geschätzt: höchstens 0,5 s direkt vor dem nächsten Wort mit Zeit, nie über eine Pause. Jedes Wort trägt `time_source` (`whisperx` | `mlx` | `geschaetzt`) in `.diar2.json`.
 - Sprecher pro Wort: der RTTM-Sprecher am Wortmittelpunkt. Fällt der Mittelpunkt in keine Sprechzeit, zählt die nächste Sprechzeit bis 0,5 s Abstand. Liegt er in zwei Sprechzeiten, wird das Wort als Überlappung markiert.
 - Pro Satz entscheidet die Mehrheit. Ein längerer Lauf eines anderen Sprechers am Satzanfang oder Satzende teilt den Satz, denn dort hat Whisper einen Sprecherwechsel nicht mit Satzzeichen markiert.
-- Kurze Rückmeldungen (mhm, ja, genau …, höchstens 2 Wörter und 1,2 s) werden als Einwurf `[Interviewee: mhm]` in den laufenden Turn gesetzt statt als Sprecherwechsel gezählt.
+- Kurze Rückmeldungen (mhm, ja, genau …, höchstens 2 Wörter und 1,2 s) innerhalb eines fremden Satzes werden als Einwurf `[Interviewee: mhm]` in den laufenden Turn gesetzt statt als Sprecherwechsel gezählt.
+- Ein ganzer Satz nur aus solchen Wörtern („Ja.“) ist nur dann ein Einwurf, wenn der Sprecher des vorigen Turns direkt danach weiterspricht. Sonst beginnt er einen Turn seines eigenen Sprechers: „Ja. An Herrn Weber.“ bleibt eine Antwort.
 - Die Hörliste enthält Sprecherwechsel im Satz, sehr kurze Turns, Überlappungen und, bei Zweitmeinung, die Stellen, an denen Nemotron und pyannote uneins sind. Sortiert ist sie nach Dauer, die längste Stelle zuerst. Davor steht immer die Kontrolle der ersten 60 s (erster Sprecher = Interviewer).
 
 ## Messen: DER gegen eine Handannotation
