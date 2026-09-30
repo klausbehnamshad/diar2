@@ -4,11 +4,12 @@ diar2 makes local, speaker-attributed transcripts of two-person oral history int
 
 ## Privacy
 
-diar2 runs on your own Mac. The installation downloads the models once. After that, every run starts the Hugging Face
-libraries in offline mode and with telemetry switched off, including the usage metrics of pyannote.audio, which are
-switched on by default there. The self-test also runs the pipeline with an unreachable proxy. No recording, no text and
-no metadata about a recording leaves the machine. The folders for recordings and results, `input/` and `output/`, are
-listed in `.gitignore`, so they never end up in a Git repository.
+diar2 processes recordings locally. Installation downloads the models once. By default, subsequent runs set the
+Hugging Face libraries to offline mode and disable Hugging Face and pyannote.audio telemetry. `DIAR2_ONLINE=1` allows
+online model access while leaving telemetry disabled. The self-test repeats the pipeline with offline flags and
+unreachable HTTP(S) proxies to check that the cached models work. The workflow has no upload step for recordings or
+transcripts. The default `input/` and `output/` folders inside this repository are listed in `.gitignore`; storage
+outside these folders needs its own protection.
 
 ## Example
 
@@ -65,7 +66,8 @@ Other tools and conda environments stay untouched. Open a new Terminal window so
 
 The self-test creates a dialogue of about 1.5 minutes with two macOS voices and known speaker changes. It runs the
 diarization on CPU and Metal, the full pipeline with the second opinion, the error rate against the known reference,
-and a second run with the network blocked; the report is `~/Downloads/_outputs/diar2_selftest.txt`.
+and a second run with offline flags and unreachable proxies; the report is
+`~/Downloads/_outputs/diar2_selftest.txt`.
 
 ## Updating
 
@@ -97,7 +99,8 @@ Per interview in `output/NAME/`:
 | `NAME.diar2.srt` | Subtitles for video players |
 | `NAME.diar2.json` | Every word with speaker, start and end time, score and time source, for further analysis |
 | `NAME.hoerliste.txt` | Review list: the passages to listen to |
-| `NAME.nemotron.rttm`, `NAME.diar2.rttm`, `NAME.pyannote.rttm` | Speaker segments (raw, smoothed, second opinion) for evaluation |
+| `NAME.nemotron.rttm`, `NAME.diar2.rttm` | Speaker segments (raw and smoothed) for evaluation |
+| `NAME.pyannote.rttm` | Optional second-opinion speaker segments (`DIAR2_SECOND=1`) |
 | `NAME.diar2.stages.tsv` | Run time and peak memory of each stage |
 
 Intermediate files and logs are in `output/.work/NAME/`.
@@ -248,7 +251,7 @@ Developed by Klaus Behnam Shad. The code was written in collaboration with Claud
 
 ## Kurzfassung
 
-diar2 erstellt auf Apple-Silicon-Macs Transkripte von Oral-History-Interviews mit zwei Personen, mit einem
-Sprecherlabel für jedes Wort und einer kurzen Hörliste der unsicheren Stellen. Es läuft lokal und nach der
-Installation vollständig offline; keine Aufnahme und kein Text verlässt den Rechner. Im Alltag legt man die Aufnahme
-nach `~/Downloads/diar2/input`, tippt `diar2` und findet das Ergebnis in `~/Downloads/diar2/output/NAME/`.
+diar2 erstellt auf Apple-Silicon-Macs Transkriptentwürfe von Oral-History-Interviews mit zwei Personen, mit einem
+Sprecherlabel für jedes Wort und einer kurzen Hörliste der unsicheren Stellen. Standardmäßig verarbeitet es die
+Aufnahmen nach dem Herunterladen der Modelle lokal im Offline-Modus. Im Alltag legt man die Aufnahme nach
+`~/Downloads/diar2/input`, tippt `diar2` und findet das Ergebnis in `~/Downloads/diar2/output/NAME/`.
