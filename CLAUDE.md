@@ -2,6 +2,8 @@
 
 - Commits enthalten keine Claude-Attribution: keine `Co-Authored-By`-Zeile, keine
   „Generated with“-Zeile, kein Emoji-Zusatz. Das gilt auch für Pull-Request-Texte.
+- Gepushte Commits auf `main` werden nie per amend oder force-push umgeschrieben.
+  Nachträge sind immer ein neuer Commit.
 - Was nicht gegen eine Quelle oder einen Lauf geprüft ist, wird im Code mit einem
   Kommentar `UNGEPRUEFT` markiert, und der Selbsttest sichert es ab, wo das geht.
 - Jede Aussage in Berichten trägt ihre Signalstärke: `[gemessen]`, `[belegt]`,
