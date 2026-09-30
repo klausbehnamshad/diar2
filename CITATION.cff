@@ -1,0 +1,24 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it using the metadata from this file."
+type: software
+title: diar2
+abstract: >-
+  diar2 produces local, speaker-attributed transcripts of two-person oral
+  history interviews on Apple Silicon Macs. It combines mlx-whisper
+  transcription, WhisperX word alignment and NVIDIA Nemotron 3
+  Diarization, assigns a speaker to every word, and writes a short review
+  list of the passages a person should listen to. After installation it
+  runs fully offline.
+authors:
+  - given-names: Klaus
+    family-names: Behnam Shad
+    orcid: "https://orcid.org/0000-0002-3601-9024"
+repository-code: "https://github.com/klausbehnamshad/diar2"
+license: Apache-2.0
+version: 0.1.0
+date-released: "2026-09-30"
+keywords:
+  - oral history
+  - speaker diarization
+  - transcription
+  - digital humanities
