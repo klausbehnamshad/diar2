@@ -4,9 +4,11 @@ diar2 makes local, speaker-attributed transcripts of two-person oral history int
 
 ## Privacy
 
-diar2 runs on your own Mac. After installation it works fully offline; the self-test checks this by running the whole
-pipeline a second time with the network blocked. No audio and no text leaves the machine. The folders for recordings
-and results, `input/` and `output/`, are listed in `.gitignore`, so they never end up in a Git repository.
+diar2 runs on your own Mac. The installation downloads the models once. After that, every run starts the Hugging Face
+libraries in offline mode and with telemetry switched off, including the usage metrics of pyannote.audio, which are
+switched on by default there. The self-test also runs the pipeline with an unreachable proxy. No recording, no text and
+no metadata about a recording leaves the machine. The folders for recordings and results, `input/` and `output/`, are
+listed in `.gitignore`, so they never end up in a Git repository.
 
 ## Example
 
@@ -32,7 +34,8 @@ Two lines of the review list for the same dialogue, after two diarization errors
 
 In this order:
 
-1. A Mac with Apple Silicon (M1 or later).
+1. A Mac with Apple Silicon (M1 or later). 16 GB RAM recommended; peak memory during transcription was 6.6 GB on an
+   M3.
 2. Xcode Command Line Tools: `xcode-select --install`
 3. Homebrew: see <https://brew.sh>
 4. conda: Miniforge, Miniconda or Anaconda.
@@ -48,12 +51,30 @@ bash ~/Downloads/diar2/install_mac.sh
 bash ~/Downloads/diar2/selftest_mac.sh
 ```
 
-The installation builds NeMo-Speech.cpp, creates its own conda environment `diar2` and downloads all models once.
-Other tools and conda environments stay untouched.
+The installation changes the following on your system:
+
+- `~/.config/diar2/paths.env` with the paths of the installed parts
+- a link `~/Downloads/.ohtools/diar2` to the repository folder
+- one line in `~/.bash_profile` (bash) or `~/.zshrc` (zsh) that loads the command `diar2`
+- a conda environment `diar2`
+- the Homebrew packages cmake, ninja, sentencepiece, abseil and ffmpeg, if missing
+- the models in the caches of NeMo-Speech.cpp, Hugging Face and PyTorch, the NLTK sentence tokenizer data, and
+  NeMo-Speech.cpp itself in `~/Downloads/.ohtools/nemo-speech`
+
+Other tools and conda environments stay untouched. Open a new Terminal window so that the command diar2 is available.
 
 The self-test creates a dialogue of about 1.5 minutes with two macOS voices and known speaker changes. It runs the
 diarization on CPU and Metal, the full pipeline with the second opinion, the error rate against the known reference,
 and a second run with the network blocked; the report is `~/Downloads/_outputs/diar2_selftest.txt`.
+
+## Updating
+
+```sh
+git -C ~/Downloads/diar2 pull --ff-only
+bash ~/Downloads/diar2/selftest_mac.sh
+```
+
+Do not run git clean -x in this folder: it deletes input/ and output/.
 
 ## Everyday use
 
@@ -93,9 +114,10 @@ The review list (`hoerliste.txt`) names the passages where the speaker assignmen
 - **Nemotron and pyannote disagree** (Nemotron und pyannote uneins): only with the second opinion; the two
   diarizations assign different speakers to the same words.
 
-Some overlaps are hidden because listening to them rarely changes the transcript: overlaps without any transcribed
-word, overlaps that contain an interjection, and overlaps shorter than 1 s whose words all belong to one speaker.
-They are counted in the header of the review list and kept with their reason in `NAME.diar2.json` under
+Some overlaps are hidden: overlaps without any transcribed word, overlaps that contain an interjection, and overlaps
+shorter than 1 s whose words all belong to one speaker. They are hidden because there is nothing to check (no
+transcribed word), the transcript already shows them (interjection), or they are short and contain only one speaker's
+words. They are counted in the header of the review list and kept with their reason in `NAME.diar2.json` under
 `hoerliste_ausgeblendet`.
 
 The list always starts with a check of the first 60 seconds: the first speaker becomes "Interviewer". Listen briefly
@@ -172,6 +194,7 @@ All settings are environment variables, for example `DIAR2_SECOND=1 diar2`.
 | `DIAR2_DEVICE` | `cpu`, or `metal` after a successful self-test | Device for the diarization |
 | `DIAR2_PRESET` | `v3-offline` | Nemotron configuration |
 | `DIAR2_FRESH` | `0` | `1` recomputes all stages |
+| `DIAR2_ONLINE` | `0` | `1` lifts the offline mode of the Hugging Face libraries; telemetry stays off |
 | `DIAR2_WHISPER_MODEL` | `mlx-community/whisper-large-v3-turbo` | Transcription model |
 | `DIAR2_CONFIG` | `~/.config/diar2/paths.env` | Paths written by the installation |
 | `DIAR2_GAP_TOLERANCE_S` | `0.5` | Largest gap to the nearest speaker for a word |
