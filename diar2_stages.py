@@ -21,7 +21,8 @@ import sys
 import wave
 from pathlib import Path
 
-WHISPER_MODEL = "mlx-community/whisper-large-v3-turbo"  # UNGEPRUEFT: HF repo id, selftest loads it
+# Geprüft am Mac (M3, macOS 26.6.2, 30.09.2026): HF-Repo-ID, der Selbsttest lädt sie
+WHISPER_MODEL = "mlx-community/whisper-large-v3-turbo"
 PYANNOTE_MODEL = "pyannote/speaker-diarization-community-1"
 
 

@@ -10,7 +10,7 @@
 #   DIAR2_SECOND=1 diar2                 (pyannote als Zweitmeinung)
 # Ergebnis je Interview in output/NAME/ dieses Repo-Ordners (z. B. ~/Downloads/diar2/output/NAME/).
 #
-# Fasst ~/Downloads/.ohtools/transkript-tools.sh nicht an. Jede Modellstufe
+# Andere Werkzeuge und conda-Umgebungen bleiben unberührt. Jede Modellstufe
 # läuft als eigener Prozess, strikt nacheinander; Laufzeit und RAM-Spitze
 # jeder Stufe stehen in NAME.diar2.stages.tsv.
 
@@ -54,7 +54,7 @@ DIAR2_IN="${DIAR2_IN:-$DIAR2_HOME/input}"                      # Eingang (Origin
 DIAR2_OUT="${DIAR2_OUT:-$DIAR2_HOME/output}"                    # Ausgang, je Interview NAME/ (.gitignore)
 DIAR2_IN_BASE="${DIAR2_IN_BASE:-$HOME/Downloads}"               # zweiter Suchort für diar2 DATEI
 DIAR2_FRESH="${DIAR2_FRESH:-0}"                                 # 1 = Zwischenstände neu rechnen
-# UNGEPRUEFT: HF-Repo-ID (huggingface.co war beim Bau nicht erreichbar); install_mac.sh lädt sie
+# Geprüft am Mac (M3, macOS 26.6.2, 30.09.2026): HF-Repo-ID; install_mac.sh lädt sie, der Selbsttest nutzt sie
 DIAR2_WHISPER_MODEL="${DIAR2_WHISPER_MODEL:-mlx-community/whisper-large-v3-turbo}"
 DIAR2_PYTHON="${DIAR2_PYTHON:-python3}"
 DIAR2_NEMO="${DIAR2_NEMO:-nemo-speech}"
@@ -82,8 +82,8 @@ mkdir -p "$DIAR2_IN" "$DIAR2_OUT"
 
 # run_stage NAME LOG CMD...: misst Laufzeit und RAM-Spitze einer Stufe.
 # macOS: /usr/bin/time -l (Bytes); Linux: /usr/bin/time -v (kB).
-# UNGEPRUEFT: Zeilen "maximum resident set size" / "peak memory footprint" der
-# macOS-Ausgabe; selftest_mac.sh zeigt die geparsten Werte.
+# Geprüft am Mac (M3, macOS 26.6.2, 30.09.2026): Zeilen "maximum resident set size" /
+# "peak memory footprint" der macOS-Ausgabe; selftest_mac.sh zeigt die geparsten Werte.
 run_stage() {
     local stage=$1 log=$2 rc=0 t0 t1 secs real="" rss="" foot="" keep
     shift 2
@@ -173,9 +173,9 @@ process_one() {
 
     # d. Nemotron 3 Diarization über nemo-speech (explizites GGUF: kein Netz;
     #    ohne --model lädt diarize das Modell selbst aus dem Netz).
-    #    Flags gegen "nemo-speech diarize --help" am Commit geprüft; UNGEPRUEFT:
-    #    dass -o mit --format rttm eine Datei schreibt (ohne Modell nicht testbar);
-    #    selftest_mac.sh sichert die Flags per --help ab und liest die Datei.
+    #    Flags gegen "nemo-speech diarize --help" am Commit geprüft.
+    #    Geprüft am Mac (M3, macOS 26.6.2, 30.09.2026): -o mit --format rttm
+    #    schreibt die RTTM-Datei; selftest_mac.sh sichert die Flags per --help ab.
     nemo_rttm="$work/$name.nemotron.$DIAR2_DEVICE.rttm"
     if fresh "$nemo_rttm" "$wav" d_nemotron; then
         run_stage d_nemotron "$work/d_nemotron.log" \

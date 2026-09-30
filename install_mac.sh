@@ -9,7 +9,7 @@
 #  2. brew install cmake ninja sentencepiece abseil ffmpeg (nur Fehlendes)
 #  3. baut NeMo-Speech.cpp aus dem Quellcode an NEMO_COMMIT (Preset metal-diar;
 #     das Binary kann --device cpu und --device metal) nach NEMO_PREFIX
-#  4. legt die conda-Umgebung diar2 an (die Umgebung whisperx bleibt unberührt)
+#  4. legt die conda-Umgebung diar2 an. Andere Werkzeuge und conda-Umgebungen bleiben unberührt.
 #  5. lädt die Modelle einmal: Nemotron 3 Diarization (nemo-speech pull),
 #     whisper-large-v3-turbo (mlx), deutsches Alignment-Modell + NLTK punkt_tab,
 #     pyannote community-1 (Token aus ~/.hf_token)
@@ -143,7 +143,9 @@ configure_nemo() {
     drop_foreign_cache "$build_dir" "$brew_prefix"
     while read -r a; do args+=("$a"); done < <(configure_args "$brew_prefix" "$absl_dir")
     # UNGEPRUEFT: dass CMAKE_IGNORE_PREFIX_PATH plus bereinigter PATH auf dem Mac
-    # bei aktiver conda base reichen (im Linux-Container nur mit Stubs getestet)
+    # bei aktiver conda base reichen (im Linux-Container nur mit Stubs getestet).
+    # Am Mac lief der Build mit deaktivierter conda base; der Weg mit aktiver
+    # conda base ist nur mit Stubs getestet.
     (cd "$1" && PATH=$(path_without_conda) scripts/configure.sh "$2" "${args[@]}")
     check_cache "$build_dir" "$brew_prefix"
 }
@@ -166,8 +168,8 @@ else
     [ "$(git -C "$src" rev-parse HEAD)" = "$NEMO_COMMIT" ] || die "Commit stimmt nicht"
     git -C "$src" submodule update --init --depth 1 ggml
     # configure.sh legt für metal-* die ggml-Patchserie an (idempotent) und reicht
-    # die -D-Optionen an cmake weiter. UNGEPRUEFT: der Metal-Build selbst
-    # (im Linux-Container nur cpu-diar gebaut).
+    # die -D-Optionen an cmake weiter. Geprüft am Mac (M3, macOS 26.6.2, 30.09.2026):
+    # der Metal-Build (Preset metal-diar).
     configure_nemo "$src" "$NEMO_PRESET"
     jobs=$(sysctl -n hw.perflevel0.physicalcpu 2>/dev/null || echo 4)
     (cd "$src" && PATH=$(path_without_conda) cmake --build --preset "$NEMO_PRESET" --parallel "$jobs") \
@@ -214,7 +216,8 @@ env_python() {
 env_python "$CONDA_ENV"
 echo "Python: $PY"
 # shellcheck disable=SC2086  # Paketliste bewusst getrennt
-# UNGEPRUEFT: Auflösung dieser Pins auf macOS arm64 (whisperx 3.8.6 zieht torch ~=2.8)
+# Geprüft am Mac (M3, macOS 26.6.2, 30.09.2026): Auflösung dieser Pins auf macOS arm64
+# (whisperx 3.8.6 zieht torch ~=2.8)
 "$PY" -m pip install -q $PIP_PACKAGES
 
 # --- 5. Modelle einmal laden -----------------------------------------------------------------

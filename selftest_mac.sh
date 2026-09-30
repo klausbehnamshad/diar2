@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: Apache-2.0
 # diar2 Selbsttest nach install_mac.sh. Braucht keine echten Interviews:
-# erzeugt mit "say" ein ca. 2-minütiges Wechselgespräch zweier Stimmen mit
+# erzeugt mit "say" ein ca. 1,5 min langes Wechselgespräch zweier Stimmen mit
 # bekannten Sprechergrenzen (Referenz-RTTM) und prüft darauf
 #   - nemo-speech: Flags laut --help, Modell-Prüfsumme, cpu gegen metal
 #     (Laufzeit, RAM-Spitze, gleiche Segmente?) -> Gerät-Voreinstellung
@@ -67,7 +67,7 @@ got=$(shasum -a 256 "$DIAR2_MODEL" | awk '{print $1}')
 if [ "$got" = "$DIAR2_MODEL_SHA256" ]; then check "Modell-SHA-256" 0 "${got:0:12}"; else check "Modell-SHA-256" 1; fi
 
 section "Testaufnahme (say)"
-# UNGEPRUEFT: Format von "say -v ?" (Name, Locale, # Beispielsatz)
+# Geprüft am Mac (M3, macOS 26.6.2, 30.09.2026): Format von "say -v ?" (Name, Locale, # Beispielsatz)
 voices=$(say -v '?' | sed -E 's/^(.*[^ ]) +([a-z]{2}_[A-Z]{2}) +#.*$/\1|\2/' | grep '|')
 v1=$(grep '|de_DE$' <<<"$voices" | sed -n 1p | cut -d'|' -f1)
 v2=$(grep '|de_DE$' <<<"$voices" | cut -d'|' -f1 | grep -vxF "$v1" | sed -n 1p)
