@@ -668,13 +668,14 @@ def run(words_json, rttm, out_prefix, second_rttm=None, names_opt="Interviewer,I
         "hoerliste": [dict(it, start=round(it["start"], 3), end=round(it["end"], 3))
                       for it in items],
     }
-    Path(out_prefix + ".diar2.json").write_text(
-        json.dumps(result, ensure_ascii=False, indent=1), encoding="utf-8")
     Path(out_prefix + ".diar2.srt").write_text(render_srt(sentences, names), encoding="utf-8")
     Path(out_prefix + ".diar2.txt").write_text(render_txt(turns, names), encoding="utf-8")
     Path(out_prefix + ".hoerliste.txt").write_text(render_review(items, names, segs, words),
                                                    encoding="utf-8")
     write_rttm(out_prefix + ".diar2.rttm", smoothed_segments(turns, sentences))
+    # written last: diar2 treats an existing .diar2.json as "fertig"
+    Path(out_prefix + ".diar2.json").write_text(
+        json.dumps(result, ensure_ascii=False, indent=1), encoding="utf-8")
     return result
 
 

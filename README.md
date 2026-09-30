@@ -33,21 +33,35 @@ conda-Wurzeln sind für CMake ausgeblendet, ein alter Build mit fremden Pfaden w
 Konfigurieren wird geprüft, dass `absl_DIR` und `SENTENCEPIECE_LIB` unter `brew --prefix` liegen.
 Der Selbsttest setzt `DIAR2_DEVICE_DEFAULT=metal` nur, wenn Metal und CPU dieselben Segmente liefern.
 
+## Alltag
+
+1. Aufnahme (mp4, mov, m4a, wav) nach `~/Downloads/diar2_eingang` legen.
+2. Im Terminal `diar2` tippen.
+3. Ergebnis liegt in `~/Downloads/diar2_ausgang/NAME/` (NAME = Dateiname ohne Endung).
+
 ## Aufruf
 
 ```sh
-diar2 interview.mp4                      # relativ zu ~/Downloads oder absolut
-DIAR2_SECOND=1 diar2 interview.mov       # mit pyannote-Zweitmeinung
+diar2                                    # alle neuen Dateien im Eingang, nacheinander
+diar2 interview.mp4                      # eine Datei: erst im Eingang, dann in ~/Downloads gesucht, oder absolut
+DIAR2_SECOND=1 diar2                     # mit pyannote-Zweitmeinung
 DIAR2_NAMES=Frau_K,Herr_M diar2 a.mp4    # Namen nach erstem Auftreten; "-" = speaker_N
 ```
 
-Ausgaben in `~/Downloads/_outputs`: `NAME.diar2.txt`, `.diar2.srt`, `.diar2.json`, `.hoerliste.txt`,
-dazu `.nemotron.rttm`, `.diar2.rttm` (geglättet), bei Zweitmeinung `.pyannote.rttm`.
-Zwischenstände liegen in `_outputs/.diar2_work/NAME/`. Ein zweiter Aufruf setzt nach einem Abbruch fort
-(`DIAR2_FRESH=1` rechnet alles neu).
+- **Stapel:** `diar2` ohne Argument bearbeitet jede Datei im Eingang, für die es noch kein
+  `diar2_ausgang/NAME/NAME.diar2.json` gibt; fertige werden übersprungen. Scheitert eine Datei, läuft der
+  Stapel weiter. Am Ende steht eine Übersicht mit einer Zeile pro Datei (fertig / übersprungen / FEHLER mit
+  Log); der Exit-Code ist ungleich 0, wenn eine Datei gescheitert ist. Auf macOS läuft alles unter
+  `caffeinate -i`, damit der Mac nicht einschläft.
+- **Originale** im Eingang werden nur gelesen, nie verschoben, verändert oder gelöscht.
+- **Ausgabe** pro Interview in `diar2_ausgang/NAME/`: `NAME.diar2.txt`, `.diar2.srt`, `.diar2.json`,
+  `.hoerliste.txt`, `.diar2.stages.tsv`, `.nemotron.rttm`, `.diar2.rttm` (geglättet), bei Zweitmeinung
+  `.pyannote.rttm`. Zwischenstände und Logs in `diar2_ausgang/.work/NAME/`. Ein zweiter Aufruf setzt nach
+  einem Abbruch an der unterbrochenen Stufe fort (`DIAR2_FRESH=1` rechnet alles neu).
+- **Ordner** per `DIAR2_IN` und `DIAR2_OUT` überschreibbar; beide legt diar2 selbst an.
 
 Weitere Variablen: `DIAR2_LANG`, `DIAR2_DEVICE` (cpu|metal), `DIAR2_PRESET`, `DIAR2_SPEAKERS`
-(feste Sprecherzahl nur für pyannote), `DIAR2_OUT`, `DIAR2_WHISPER_MODEL`.
+(feste Sprecherzahl nur für pyannote), `DIAR2_WHISPER_MODEL`.
 Alle Schwellen der Glättung stehen oben in `diar2_merge.py` und lassen sich als
 `DIAR2_<NAME>` setzen, z. B. `DIAR2_SHORT_TURN_S=0.8`.
 
@@ -70,9 +84,9 @@ Alle Schwellen der Glättung stehen oben in `diar2_merge.py` und lassen sich als
 PY=$(sed -n 's/^DIAR2_PYTHON=//p' ~/.config/diar2/paths.env)
 $PY ~/Downloads/.ohtools/diar2/eval_diar.py labels2rttm ~/Downloads/marken.txt ~/Downloads/_outputs/referenz.rttm
 $PY ~/Downloads/.ohtools/diar2/eval_diar.py der --ref ~/Downloads/_outputs/referenz.rttm \
-  --hyp "nemotron=$HOME/Downloads/_outputs/interview.nemotron.rttm" \
-  --hyp "pyannote=$HOME/Downloads/_outputs/interview.pyannote.rttm" \
-  --hyp "geglaettet=$HOME/Downloads/_outputs/interview.diar2.rttm"
+  --hyp "nemotron=$HOME/Downloads/diar2_ausgang/interview/interview.nemotron.rttm" \
+  --hyp "pyannote=$HOME/Downloads/diar2_ausgang/interview/interview.pyannote.rttm" \
+  --hyp "geglaettet=$HOME/Downloads/diar2_ausgang/interview/interview.diar2.rttm"
 ```
 
 (`interview` ist der Dateiname der Aufnahme ohne Endung.)

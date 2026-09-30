@@ -1,11 +1,13 @@
 #!/usr/bin/env bash
-# diar2: Interview (mp4/mov) -> Transkript mit Sprecherlabel pro Wort + Hörliste.
+# diar2: Interview (mp4/mov/m4a/wav) -> Transkript mit Sprecherlabel pro Wort + Hörliste.
 #
-# Laden (bash oder zsh, z. B. in ~/.zshrc):
+# Laden (bash oder zsh, z. B. in ~/.bash_profile oder ~/.zshrc):
 #   source ~/Downloads/.ohtools/diar2/diar2.sh
 # Aufruf:
-#   diar2 interview.mp4                  (relativ zu ~/Downloads oder absolut)
-#   DIAR2_SECOND=1 diar2 interview.mov   (pyannote als Zweitmeinung)
+#   diar2                                (alle neuen Dateien in ~/Downloads/diar2_eingang)
+#   diar2 interview.mp4                  (eine Datei: erst im Eingang, dann ~/Downloads, oder absolut)
+#   DIAR2_SECOND=1 diar2                 (pyannote als Zweitmeinung)
+# Ergebnis je Interview in ~/Downloads/diar2_ausgang/NAME/.
 #
 # Fasst ~/Downloads/.ohtools/transkript-tools.sh nicht an. Jede Modellstufe
 # läuft als eigener Prozess, strikt nacheinander; Laufzeit und RAM-Spitze
@@ -46,8 +48,9 @@ DIAR2_DEVICE="${DIAR2_DEVICE:-${DIAR2_DEVICE_DEFAULT:-cpu}}"   # cpu | metal
 DIAR2_PRESET="${DIAR2_PRESET:-v3-offline}"                      # Nemotron-Offline-Geometrie
 DIAR2_SECOND="${DIAR2_SECOND:-0}"                               # 1 = pyannote Zweitmeinung
 DIAR2_NAMES="${DIAR2_NAMES:-Interviewer,Interviewee}"           # "-" = speaker_N behalten
-DIAR2_OUT="${DIAR2_OUT:-$HOME/Downloads/_outputs}"
-DIAR2_IN_BASE="${DIAR2_IN_BASE:-$HOME/Downloads}"
+DIAR2_IN="${DIAR2_IN:-$HOME/Downloads/diar2_eingang}"         # Eingang (Originale bleiben)
+DIAR2_OUT="${DIAR2_OUT:-$HOME/Downloads/diar2_ausgang}"         # Ausgang, je Interview NAME/
+DIAR2_IN_BASE="${DIAR2_IN_BASE:-$HOME/Downloads}"               # zweiter Suchort für diar2 DATEI
 DIAR2_FRESH="${DIAR2_FRESH:-0}"                                 # 1 = Zwischenstände neu rechnen
 # UNGEPRUEFT: HF-Repo-ID (huggingface.co war beim Bau nicht erreichbar); install_mac.sh lädt sie
 DIAR2_WHISPER_MODEL="${DIAR2_WHISPER_MODEL:-mlx-community/whisper-large-v3-turbo}"
@@ -61,26 +64,19 @@ export DIAR2_LANG DIAR2_WHISPER_MODEL DIAR2_DEVICE DIAR2_PRESET DIAR2_SECOND DIA
 
 die() { echo "diar2: $*" >&2; exit 1; }
 
-[ $# -eq 1 ] || die "Aufruf: diar2 DATEI   (mp4/mov, relativ zu ~/Downloads oder absolut)"
-case "$1" in
-    /*) input=$1 ;;
-    *) if [ -f "$DIAR2_IN_BASE/$1" ]; then input="$DIAR2_IN_BASE/$1"; else input=$1; fi ;;
-esac
-[ -f "$input" ] || die "Datei nicht gefunden: $1"
+# Der ganze Lauf unter caffeinate -i, damit der Mac nicht einschläft (nur macOS)
+if [ "$(uname)" = Darwin ] && [ -z "${DIAR2_CAFFEINATED:-}" ] && command -v caffeinate >/dev/null; then
+    DIAR2_CAFFEINATED=1 exec caffeinate -i bash "${BASH_SOURCE[0]}" "$@"
+fi
+
+[ $# -le 1 ] || die "Aufruf: diar2            (alle neuen Dateien in $DIAR2_IN)
+       diar2 DATEI      (eine Datei; relativ: erst $DIAR2_IN, dann $DIAR2_IN_BASE)"
 if [ -z "$DIAR2_MODEL" ] || [ ! -f "$DIAR2_MODEL" ]; then
     die "Nemotron-Modell nicht gefunden (DIAR2_MODEL). Erst install_mac.sh ausführen."
 fi
 case "$DIAR2_DEVICE" in cpu | metal) ;; *) die "DIAR2_DEVICE muss cpu oder metal sein" ;; esac
 command -v ffmpeg >/dev/null || die "ffmpeg fehlt"
-
-base=$(basename "$input")
-name=${base%.*}
-mkdir -p "$DIAR2_OUT"
-work="$DIAR2_OUT/.diar2_work/$name"
-mkdir -p "$work"
-prefix="$DIAR2_OUT/$name"
-stages="$prefix.diar2.stages.tsv"
-printf 'stufe\tsekunden\tmax_rss_mb\tpeak_footprint_mb\texit\n' >"$stages"
+mkdir -p "$DIAR2_IN" "$DIAR2_OUT"
 
 # run_stage NAME LOG CMD...: misst Laufzeit und RAM-Spitze einer Stufe.
 # macOS: /usr/bin/time -l (Bytes); Linux: /usr/bin/time -v (kB).
@@ -113,7 +109,13 @@ run_stage() {
     return "$rc"
 }
 
-fail_log() { echo "--- letzte Zeilen aus $1:" >&2; tail -n 20 "$1" >&2; exit 1; }
+# fail_log LOG: letzte Zeilen zeigen, Log für die Übersicht merken, Datei aufgeben
+fail_log() {
+    echo "--- letzte Zeilen aus $1:" >&2
+    tail -n 20 "$1" >&2
+    echo "$1" >"$work/.fehler_log"
+    exit 1
+}
 
 # fresh ZIEL QUELLE: Stufe rechnen, wenn ZIEL fehlt oder älter als QUELLE ist.
 # So setzt ein zweiter Aufruf nach einem Abbruch an der Stelle fort.
@@ -123,66 +125,80 @@ fresh() {
     return 1
 }
 
-echo "diar2: $base  (Gerät $DIAR2_DEVICE, Sprache $DIAR2_LANG, Zweitmeinung $DIAR2_SECOND)"
+# process_one EINGABE: eine Datei durch alle Stufen. Läuft in einer Subshell,
+# damit ein Fehler (exit in fail_log) nur diese Datei beendet.
+process_one() {
+    input=$1
+    base=$(basename "$input")
+    name=${base%.*}
+    work="$DIAR2_OUT/.work/$name"
+    outdir="$DIAR2_OUT/$name"
+    prefix="$outdir/$name"
+    mkdir -p "$work" "$outdir"
+    rm -f "$work/.fehler_log"
+    stages="$prefix.diar2.stages.tsv"
+    printf 'stufe\tsekunden\tmax_rss_mb\tpeak_footprint_mb\texit\n' >"$stages"
 
-# a. Tonspur -> 16 kHz mono PCM
-wav="$work/$name.16k.wav"
-if fresh "$wav" "$input" a_audio; then
-    run_stage a_audio "$work/a_audio.log" \
-        ffmpeg -nostdin -hide_banner -loglevel error -y -i "$input" \
-        -map 0:a:0 -ac 1 -ar 16000 -c:a pcm_s16le "$wav" || fail_log "$work/a_audio.log"
-fi
+    echo "diar2: $base  (Gerät $DIAR2_DEVICE, Sprache $DIAR2_LANG, Zweitmeinung $DIAR2_SECOND)"
 
-# b. mlx-whisper
-asr="$work/$name.asr.$DIAR2_LANG.json"
-if fresh "$asr" "$wav" b_whisper; then
-    run_stage b_whisper "$work/b_whisper.log" \
-        "$DIAR2_PYTHON" "$DIAR2_HOME/diar2_stages.py" transcribe "$wav" "$asr" \
-        --model "$DIAR2_WHISPER_MODEL" --language "$DIAR2_LANG" || fail_log "$work/b_whisper.log"
-fi
-
-# c. WhisperX align (CPU); bei Fehler oder Abbruch: mlx-whisper-Wortzeiten
-words="$work/$name.words.json"
-if fresh "$words" "$asr" c_align; then
-    if ! run_stage c_align "$work/c_align.log" \
-        "$DIAR2_PYTHON" "$DIAR2_HOME/diar2_stages.py" align "$wav" "$asr" "$words" \
-        --language "$DIAR2_LANG"; then
-        echo "  align fehlgeschlagen, nutze mlx-whisper-Wortzeiten (alignment=fallback)"
-        "$DIAR2_PYTHON" "$DIAR2_HOME/diar2_stages.py" fallback "$asr" "$words" \
-            --reason "whisperx align fehlgeschlagen, siehe c_align.log" >/dev/null
+    # a. Tonspur -> 16 kHz mono PCM
+    wav="$work/$name.16k.wav"
+    if fresh "$wav" "$input" a_audio; then
+        run_stage a_audio "$work/a_audio.log" \
+            ffmpeg -nostdin -hide_banner -loglevel error -y -i "$input" \
+            -map 0:a:0 -ac 1 -ar 16000 -c:a pcm_s16le "$wav" || fail_log "$work/a_audio.log"
     fi
-fi
 
-# d. Nemotron 3 Diarization über nemo-speech (explizites GGUF: kein Netz;
-#    ohne --model lädt diarize das Modell selbst aus dem Netz).
-#    Flags gegen "nemo-speech diarize --help" am Commit geprüft; UNGEPRUEFT:
-#    dass -o mit --format rttm eine Datei schreibt (ohne Modell nicht testbar);
-#    selftest_mac.sh sichert die Flags per --help ab und liest die Datei.
-nemo_rttm="$work/$name.nemotron.$DIAR2_DEVICE.rttm"
-if fresh "$nemo_rttm" "$wav" d_nemotron; then
-    run_stage d_nemotron "$work/d_nemotron.log" \
-        "$DIAR2_NEMO" diarize "$wav" --model "$DIAR2_MODEL" --device "$DIAR2_DEVICE" \
-        --preset "$DIAR2_PRESET" --format rttm --recording-id "$name" \
-        -o "$nemo_rttm" --force --quiet || fail_log "$work/d_nemotron.log"
-fi
-cp "$nemo_rttm" "$prefix.nemotron.rttm"
-
-# e. optional: pyannote community-1 als Zweitmeinung
-second_args=()
-if [ "$DIAR2_SECOND" = 1 ]; then
-    pyan_rttm="$work/$name.pyannote.rttm"
-    if fresh "$pyan_rttm" "$wav" e_pyannote; then
-        run_stage e_pyannote "$work/e_pyannote.log" \
-            "$DIAR2_PYTHON" "$DIAR2_HOME/diar2_stages.py" pyannote "$wav" "$pyan_rttm" \
-            --recording-id "$name" || fail_log "$work/e_pyannote.log"
+    # b. mlx-whisper
+    asr="$work/$name.asr.$DIAR2_LANG.json"
+    if fresh "$asr" "$wav" b_whisper; then
+        run_stage b_whisper "$work/b_whisper.log" \
+            "$DIAR2_PYTHON" "$DIAR2_HOME/diar2_stages.py" transcribe "$wav" "$asr" \
+            --model "$DIAR2_WHISPER_MODEL" --language "$DIAR2_LANG" || fail_log "$work/b_whisper.log"
     fi
-    cp "$pyan_rttm" "$prefix.pyannote.rttm"
-    second_args=(--second "$pyan_rttm")
-fi
 
-# f-h. Zuordnung, Glättung, Hörliste, Ausgaben (ohne Modell)
-meta="$work/meta.json"
-"$DIAR2_PYTHON" - "$meta" "$base" "$input" "$stages" <<'PY'
+    # c. WhisperX align (CPU); bei Fehler oder Abbruch: mlx-whisper-Wortzeiten
+    words="$work/$name.words.json"
+    if fresh "$words" "$asr" c_align; then
+        if ! run_stage c_align "$work/c_align.log" \
+            "$DIAR2_PYTHON" "$DIAR2_HOME/diar2_stages.py" align "$wav" "$asr" "$words" \
+            --language "$DIAR2_LANG"; then
+            echo "  align fehlgeschlagen, nutze mlx-whisper-Wortzeiten (alignment=fallback)"
+            "$DIAR2_PYTHON" "$DIAR2_HOME/diar2_stages.py" fallback "$asr" "$words" \
+                --reason "whisperx align fehlgeschlagen, siehe c_align.log" >/dev/null
+        fi
+    fi
+
+    # d. Nemotron 3 Diarization über nemo-speech (explizites GGUF: kein Netz;
+    #    ohne --model lädt diarize das Modell selbst aus dem Netz).
+    #    Flags gegen "nemo-speech diarize --help" am Commit geprüft; UNGEPRUEFT:
+    #    dass -o mit --format rttm eine Datei schreibt (ohne Modell nicht testbar);
+    #    selftest_mac.sh sichert die Flags per --help ab und liest die Datei.
+    nemo_rttm="$work/$name.nemotron.$DIAR2_DEVICE.rttm"
+    if fresh "$nemo_rttm" "$wav" d_nemotron; then
+        run_stage d_nemotron "$work/d_nemotron.log" \
+            "$DIAR2_NEMO" diarize "$wav" --model "$DIAR2_MODEL" --device "$DIAR2_DEVICE" \
+            --preset "$DIAR2_PRESET" --format rttm --recording-id "$name" \
+            -o "$nemo_rttm" --force --quiet || fail_log "$work/d_nemotron.log"
+    fi
+    cp "$nemo_rttm" "$prefix.nemotron.rttm"
+
+    # e. optional: pyannote community-1 als Zweitmeinung
+    second_args=()
+    if [ "$DIAR2_SECOND" = 1 ]; then
+        pyan_rttm="$work/$name.pyannote.rttm"
+        if fresh "$pyan_rttm" "$wav" e_pyannote; then
+            run_stage e_pyannote "$work/e_pyannote.log" \
+                "$DIAR2_PYTHON" "$DIAR2_HOME/diar2_stages.py" pyannote "$wav" "$pyan_rttm" \
+                --recording-id "$name" || fail_log "$work/e_pyannote.log"
+        fi
+        cp "$pyan_rttm" "$prefix.pyannote.rttm"
+        second_args=(--second "$pyan_rttm")
+    fi
+
+    # f-h. Zuordnung, Glättung, Hörliste, Ausgaben (ohne Modell)
+    meta="$work/meta.json"
+    "$DIAR2_PYTHON" - "$meta" "$base" "$input" "$stages" <<'PY'
 import hashlib, json, os, sys
 meta_path, base, src, stages = sys.argv[1:5]
 h = hashlib.sha256()
@@ -213,14 +229,98 @@ json.dump({
                         [r[0]] + [num(x) for x in r[1:]])) for r in rows],
 }, open(meta_path, "w", encoding="utf-8"), ensure_ascii=False, indent=1)
 PY
-run_stage f_merge "$work/f_merge.log" \
-    "$DIAR2_PYTHON" "$DIAR2_HOME/diar2_merge.py" --words "$words" --rttm "$nemo_rttm" \
-    ${second_args[@]+"${second_args[@]}"} --out-prefix "$prefix" --names "$DIAR2_NAMES" --meta "$meta" ||
-    fail_log "$work/f_merge.log"
-# Zusammenfassung über ihr Präfix holen: time -l hängt seine Ausgabe hinten an
-{ grep '^Wörter ' "$work/f_merge.log" || true; } | tail -n 1 | sed 's/^/  /'
+    run_stage f_merge "$work/f_merge.log" \
+        "$DIAR2_PYTHON" "$DIAR2_HOME/diar2_merge.py" --words "$words" --rttm "$nemo_rttm" \
+        ${second_args[@]+"${second_args[@]}"} --out-prefix "$prefix" --names "$DIAR2_NAMES" --meta "$meta" ||
+        fail_log "$work/f_merge.log"
+    # Zusammenfassung über ihr Präfix holen: time -l hängt seine Ausgabe hinten an
+    { grep '^Wörter ' "$work/f_merge.log" || true; } | tail -n 1 | sed 's/^/  /'
 
-echo "fertig:"
-for ext in diar2.txt diar2.srt diar2.json hoerliste.txt; do
-    echo "  $prefix.$ext"
+    echo "fertig: $outdir/"
+    for ext in diar2.txt diar2.srt diar2.json hoerliste.txt; do
+        echo "  $name.$ext"
+    done
+}
+
+# is_audio DATEI: mp4, mov, m4a, wav in beliebiger Schreibweise
+is_audio() {
+    case "$(printf '%s' "${1##*.}" | tr '[:upper:]' '[:lower:]')" in
+        mp4 | mov | m4a | wav) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
+# run_file EINGABE: process_one mit Log; hängt eine Zeile an die Übersicht
+summary=()
+failed=0
+run_file() {
+    local input=$1 name rc log
+    name=$(basename "$input")
+    name=${name%.*}
+    mkdir -p "$DIAR2_OUT/.work/$name"
+    log="$DIAR2_OUT/.work/$name/diar2.log"
+    set +e
+    (set -e; process_one "$input") 2>&1 | tee "$log"
+    rc=${PIPESTATUS[0]}
+    set -e
+    if [ "$rc" = 0 ]; then
+        summary+=("fertig        $name  -> $DIAR2_OUT/$name/")
+    else
+        failed=$((failed + 1))
+        if [ -s "$DIAR2_OUT/.work/$name/.fehler_log" ]; then log=$(cat "$DIAR2_OUT/.work/$name/.fehler_log"); fi
+        summary+=("FEHLER        $name  Log: $log")
+    fi
+}
+
+print_summary() {
+    echo
+    echo "Übersicht ($DIAR2_OUT):"
+    printf '  %s\n' "${summary[@]}"
+}
+
+if [ $# -eq 1 ]; then
+    # eine Datei: absolut, sonst erst im Eingang, dann in ~/Downloads, dann relativ
+    case "$1" in
+        /*) input=$1 ;;
+        *) if [ -f "$DIAR2_IN/$1" ]; then input="$DIAR2_IN/$1"
+           elif [ -f "$DIAR2_IN_BASE/$1" ]; then input="$DIAR2_IN_BASE/$1"
+           else input=$1; fi ;;
+    esac
+    [ -f "$input" ] || die "Datei nicht gefunden: $1"
+    run_file "$input"
+    print_summary
+    [ "$failed" = 0 ]
+    exit
+fi
+
+# Stapel: jede Audio-/Videodatei im Eingang, die noch kein fertiges
+# NAME/NAME.diar2.json im Ausgang hat; Originale werden nur gelesen.
+files=()
+for f in "$DIAR2_IN"/*; do
+    [ -f "$f" ] && is_audio "$f" && files+=("$f")
 done
+if [ ${#files[@]} -eq 0 ]; then
+    echo "diar2: keine Datei in $DIAR2_IN (mp4, mov, m4a, wav)."
+    echo "       Datei dort hineinlegen und diar2 erneut aufrufen."
+    exit 0
+fi
+seen=" "
+for f in "${files[@]}"; do
+    name=$(basename "$f")
+    name=${name%.*}
+    case "$seen" in
+        *" $name/"*)
+            failed=$((failed + 1))
+            summary+=("FEHLER        $(basename "$f")  gleicher Name wie eine andere Datei im Eingang")
+            continue ;;
+    esac
+    seen="$seen$name/ "
+    if [ -s "$DIAR2_OUT/$name/$name.diar2.json" ]; then
+        summary+=("übersprungen  $name  (schon fertig)")
+        continue
+    fi
+    echo
+    run_file "$f"
+done
+print_summary
+[ "$failed" = 0 ]

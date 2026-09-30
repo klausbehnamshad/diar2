@@ -268,6 +268,9 @@ EOF
 echo "geschrieben: $CONFIG (Gerät-Voreinstellung: $device_default)"
 
 mkdir -p "$OHTOOLS"
+# fester Eingang und Ausgang für den Alltag (legt diar2 sonst selbst an)
+mkdir -p "$HOME/Downloads/diar2_eingang" "$HOME/Downloads/diar2_ausgang"
+echo "Eingang: ~/Downloads/diar2_eingang   Ausgang: ~/Downloads/diar2_ausgang"
 if [ "$HERE" != "$OHTOOLS/diar2" ]; then
     ln -sfn "$HERE" "$OHTOOLS/diar2"
 fi

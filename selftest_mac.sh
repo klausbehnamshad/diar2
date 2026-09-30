@@ -169,7 +169,7 @@ section "diar2 komplett (mit pyannote-Zweitmeinung)"
 run_diar2 online
 rc=$?
 check "diar2 Lauf" "$rc"
-res="$WORK/online/selftest"
+res="$WORK/online/selftest/selftest"
 if [ -f "$res.diar2.stages.tsv" ]; then
     stage_table "$res.diar2.stages.tsv"
 fi
@@ -193,7 +193,7 @@ run_diar2 offline HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 \
     https_proxy=http://127.0.0.1:9 http_proxy=http://127.0.0.1:9 all_proxy=http://127.0.0.1:9 NO_PROXY= no_proxy=
 rc=$?
 check "diar2 offline Lauf" "$rc"
-off="$WORK/offline/selftest"
+off="$WORK/offline/selftest/selftest"
 if [ -f "$off.diar2.json" ]; then
     align=$("$PY" -c "import json;print(json.load(open('$off.diar2.json'))['alignment'])")
     [ "$align" = whisperx ]

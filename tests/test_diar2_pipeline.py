@@ -52,6 +52,7 @@ def align(segments, model, meta, audio, device, return_char_alignments=False):
 '''
 
 FAKE_NEMO = '''#!/usr/bin/env bash
+case "$*" in *kaputt*) echo "simulated nemo failure" >&2; exit 3 ;; esac
 out=""; dev=""
 while [ $# -gt 0 ]; do
   case "$1" in -o) out=$2; shift 2;; --device) dev=$2; shift 2;; *) shift;; esac
@@ -102,7 +103,7 @@ def test_full_run_writes_outputs_and_stages(env):
     home, _ = env
     r = run_diar2(env, "probe interview.mp4")
     assert r.returncode == 0, r.stderr + r.stdout
-    out = home / "Downloads" / "_outputs"
+    out = home / "Downloads" / "diar2_ausgang" / "probe interview"
     for ext in ("diar2.json", "diar2.srt", "diar2.txt", "hoerliste.txt", "diar2.stages.tsv",
                 "nemotron.rttm"):
         assert (out / f"probe interview.{ext}").exists(), ext
@@ -119,7 +120,7 @@ def test_full_run_writes_outputs_and_stages(env):
     stages = (out / "probe interview.diar2.stages.tsv").read_text().splitlines()
     assert [l.split("\t")[0] for l in stages[1:]] == [
         "a_audio", "b_whisper", "c_align", "d_nemotron", "f_merge"]
-    wav = out / ".diar2_work" / "probe interview" / "probe interview.16k.wav"
+    wav = home / "Downloads/diar2_ausgang/.work/probe interview/probe interview.16k.wav"
     probe = subprocess.run(["ffprobe", "-v", "error", "-show_entries",
                             "stream=sample_rate,channels,codec_name", "-of", "csv=p=0",
                             str(wav)], capture_output=True, text=True).stdout.strip()
@@ -132,7 +133,8 @@ def test_align_failure_falls_back(env):
     r = run_diar2(env, "probe interview.mp4")
     assert r.returncode == 0, r.stderr
     assert "alignment=fallback" in r.stdout
-    res = json.loads((home / "Downloads/_outputs/probe interview.diar2.json").read_text())
+    res = json.loads((home / "Downloads/diar2_ausgang/probe interview/probe interview.diar2.json")
+                     .read_text())
     assert res["alignment"] == "fallback"
     assert {w["time_source"] for w in res["words"]} == {"mlx"}
 
@@ -144,7 +146,7 @@ def test_second_run_resumes_and_device_env(env):
     r = run_diar2(env, "probe interview.mp4")
     assert r.returncode == 0, r.stderr
     assert "a_audio      vorhanden" in r.stdout and "b_whisper    vorhanden" in r.stdout
-    work = home / "Downloads/_outputs/.diar2_work/probe interview"
+    work = home / "Downloads/diar2_ausgang/.work/probe interview"
     assert (work / "device_used").read_text().strip() == "metal"
 
 
@@ -196,7 +198,7 @@ def test_run_stage_with_german_time_output(env, force_comma):
               "FORCE_COMMA": force_comma})
     r = run_diar2(env, "probe interview.mp4")
     assert r.returncode == 0, r.stderr + r.stdout
-    out = home / "Downloads" / "_outputs"
+    out = home / "Downloads" / "diar2_ausgang" / "probe interview"
     rows = [l.split("\t") for l in
             (out / "probe interview.diar2.stages.tsv").read_text().splitlines()[1:]]
     assert rows and all(row[1] == "19.27" for row in rows)
@@ -208,10 +210,10 @@ def test_run_stage_with_german_time_output(env, force_comma):
     # time ran under LC_ALL=C, the measured command kept the caller's locale
     assert set((home / "time_locale").read_text().split()) == {"C"}
     # f_merge.log ends with the macOS time output; the summary is still shown
-    log = (out / ".diar2_work" / "probe interview" / "f_merge.log").read_text()
+    log = (home / "Downloads/diar2_ausgang/.work/probe interview/f_merge.log").read_text()
     assert log.rstrip().endswith("peak memory footprint")
     summary = [l for l in r.stdout.splitlines() if l.startswith("  Wörter ")]
     assert summary == ["  Wörter 6, Turns 2, Hörliste 0, Alignment whisperx"]
     assert "peak memory footprint" not in r.stdout
-    work = out / ".diar2_work" / "probe interview"
+    work = home / "Downloads/diar2_ausgang/.work/probe interview"
     assert (work / "nemo_locale").read_text().strip() == "C.UTF-8"
