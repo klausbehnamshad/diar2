@@ -55,6 +55,40 @@ def test_timel_parses_macos_output(tmp_path, capsys):
     assert capsys.readouterr().out.split() == ["12.34", "500", "584"]
 
 
+def test_timel_parses_german_decimal_comma(tmp_path, capsys):
+    log = tmp_path / "t.log"
+    log.write_text("        19,27 real         3,10 user         0,20 sys\n"
+                   "           524288000  maximum resident set size\n")
+    st.timel(log)
+    assert capsys.readouterr().out.split() == ["19.27", "500", "-"]
+
+
+def test_timel_integer_seconds(tmp_path, capsys):
+    log = tmp_path / "t.log"
+    log.write_text("        57 real         3 user\n")
+    st.timel(log)
+    assert capsys.readouterr().out.split()[0] == "57"
+
+
+def test_selftest_stage_table_accepts_comma(tmp_path):
+    text = (HERE / "selftest_mac.sh").read_text(encoding="utf-8")
+    block = text[text.index("# --- stufentabelle: begin"):text.index("# --- stufentabelle: end")]
+    tsv = tmp_path / "stages.tsv"
+    tsv.write_text("stufe\tsekunden\tmax_rss_mb\tpeak_footprint_mb\texit\n"
+                   "b_whisper\t19,27\t500\t584\t0\n"
+                   "d_nemotron\t8.5\t270\t300\t0\n"
+                   "f_merge\t-\t-\t-\t0\n")
+    script = (f'set -uo pipefail\nPY="{sys.executable}"\nmins=2.00\n'
+              'say_() { echo "$*"; }\n'
+              f'{block}\nstage_table "{tsv}"\n')
+    r = subprocess.run(["bash", "-c", script], capture_output=True, text=True)
+    assert r.returncode == 0 and "Error" not in r.stderr, r.stderr
+    lines = r.stdout.splitlines()
+    assert lines[1].split() == ["b_whisper", "19.27", "9.6", "500", "584", "0"]
+    assert lines[2].split() == ["d_nemotron", "8.5", "4.2", "270", "300", "0"]
+    assert lines[3].split() == ["f_merge", "-", "-", "-", "-", "0"]
+
+
 def test_compare_equal_and_different(tmp_path):
     a = tmp_path / "a.rttm"
     b = tmp_path / "b.rttm"

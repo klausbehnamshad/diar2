@@ -34,10 +34,11 @@ f=300; [ "$voice" = Anna ] && f=200
 d=$(( ${#text} / 15 + 1 ))
 ffmpeg -loglevel error -y -f lavfi -i "sine=frequency=$f:duration=$d" "$out"
 """,
+    # German macOS format ("1,50 real"), as measured on the target Mac
     "faketime": """#!/bin/bash
 shift  # -l
 "$@"; rc=$?
-printf '        1.50 real  1.00 user  0.10 sys\\n   104857600  maximum resident set size\\n   125829120  peak memory footprint\\n' >&2
+printf '        1,50 real  1,00 user  0,10 sys\\n   104857600  maximum resident set size\\n   125829120  peak memory footprint\\n' >&2
 exit $rc
 """,
     # writes the reference-like turns so DER and word scoring have input
@@ -123,6 +124,8 @@ def test_selftest_dry_run(tmp_path):
     assert "DIAR2_DEVICE_DEFAULT=metal" in config.read_text()
     assert config.read_text().count("DIAR2_DEVICE_DEFAULT") == 1
     assert "s pro Audiominute" in text and "peak footprint 120 MB" in text
+    assert "Laufzeit 1.50 s (0.9 s pro Audiominute)" in text
+    assert "d_nemotron         1.50            0.9" in text
     for sysname in ("nemotron", "pyannote", "geglaettet"):
         assert sum(sysname in line and "%" in line for line in text.splitlines()) == 2
     assert "[ok]     diar2 offline Lauf" in text

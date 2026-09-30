@@ -116,16 +116,34 @@ done <"$WORK/dialog.txt"
 dur=$("$PY" "$TOOLS" compose "$WORK/plan.tsv" "$WORK/selftest.wav" "$WORK/reference.rttm")
 ffmpeg -nostdin -loglevel error -y -i "$WORK/selftest.wav" -c:a aac -b:a 128k "$WORK/selftest.mp4"
 mins=$("$PY" -c "print(f'{$dur/60:.2f}')")
+# --- stufentabelle: begin (tests/test_diar2_eval.py führt diesen Block aus)
+# per_min SEKUNDEN: Sekunden pro Audiominute; nimmt Komma oder Punkt an
+per_min() {
+    "$PY" -c 'import sys
+v = sys.argv[1].strip().replace(",", ".")
+try:
+    print(f"{float(v) / float(sys.argv[2]):.1f}")
+except ValueError:
+    print("-")' "$1" "$mins"
+}
+# stage_table STAGES.TSV: eine Berichtszeile pro Stufe
+stage_table() {
+    say_ "Stufe          Sekunden  s/Audiominute  max RSS MB  peak footprint MB  exit"
+    tail -n +2 "$1" | while IFS=$'\t' read -r st s r f e; do
+        say_ "$(printf '%-14s %8s  %13s  %10s  %17s  %4s' "$st" "${s//,/.}" "$(per_min "$s")" "$r" "$f" "$e")"
+    done
+}
+# --- stufentabelle: end
 say_ "Testaufnahme: $dur s ($mins min), $(grep -c . "$WORK/reference.rttm") Referenzsegmente, davon 1 Überlappung (Mhm)"
 
 section "Nemotron: cpu gegen metal"
 for dev in cpu metal; do
-    "${DIAR2_TIME:-/usr/bin/time}" -l "$NEMO" diarize "$WORK/selftest.wav" --model "$DIAR2_MODEL" --device "$dev" \
+    LC_ALL=C "${DIAR2_TIME:-/usr/bin/time}" -l "$NEMO" diarize "$WORK/selftest.wav" --model "$DIAR2_MODEL" --device "$dev" \
         --preset v3-offline --format rttm --recording-id selftest -o "$WORK/nemo.$dev.rttm" \
         --force --quiet >"$WORK/nemo.$dev.log" 2>&1
     rc=$?
     read -r sec rss foot < <("$PY" "$TOOLS" timel "$WORK/nemo.$dev.log")
-    permin=$("$PY" -c "print(f'{float(\"$sec\")/$mins:.1f}' if '$sec' != '-' else '-')")
+    permin=$(per_min "$sec")
     check "nemotron $dev" "$rc" "Laufzeit $sec s ($permin s pro Audiominute), max RSS $rss MB, peak footprint $foot MB, $(grep -c . "$WORK/nemo.$dev.rttm" 2>/dev/null || echo 0) Segmente"
 done
 device=cpu
@@ -153,11 +171,7 @@ rc=$?
 check "diar2 Lauf" "$rc"
 res="$WORK/online/selftest"
 if [ -f "$res.diar2.stages.tsv" ]; then
-    say_ "Stufe          Sekunden  s/Audiominute  max RSS MB  peak footprint MB  exit"
-    tail -n +2 "$res.diar2.stages.tsv" | while IFS=$'\t' read -r st s r f e; do
-        say_ "$(printf '%-14s %8s  %13s  %10s  %17s  %4s' "$st" "$s" \
-            "$("$PY" -c "print(f'{float(\"$s\")/$mins:.1f}')")" "$r" "$f" "$e")"
-    done
+    stage_table "$res.diar2.stages.tsv"
 fi
 if [ -f "$res.diar2.json" ]; then
     "$PY" "$TOOLS" score "$res.diar2.json" "$WORK/reference.rttm" "$WORK/script.txt" |

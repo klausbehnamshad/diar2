@@ -74,11 +74,12 @@ def compose(plan, out_wav, ref_rttm):
 
 def timel(log):
     text = Path(log).read_text(encoding="utf-8", errors="replace")
-    real = re.search(r"([\d.]+) real", text)
+    # "19.27 real" oder, bei deutscher Locale, "19,27 real"
+    real = re.search(r"(\d+(?:[.,]\d+)?) real", text)
     rss = re.search(r"(\d+)\s+maximum resident set size", text)
     foot = re.search(r"(\d+)\s+peak memory footprint", text)
     fmt = lambda m, div: f"{int(m.group(1)) / div:.0f}" if m else "-"  # noqa: E731
-    print(real.group(1) if real else "-", fmt(rss, 1048576), fmt(foot, 1048576))
+    print(real.group(1).replace(",", ".") if real else "-", fmt(rss, 1048576), fmt(foot, 1048576))
 
 
 def _rttm(path):

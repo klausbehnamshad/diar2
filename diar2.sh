@@ -87,12 +87,16 @@ printf 'stufe\tsekunden\tmax_rss_mb\tpeak_footprint_mb\texit\n' >"$stages"
 # UNGEPRUEFT: Zeilen "maximum resident set size" / "peak memory footprint" der
 # macOS-Ausgabe; selftest_mac.sh zeigt die geparsten Werte.
 run_stage() {
-    local stage=$1 log=$2 rc=0 t0 t1 secs real="" rss="" foot=""
+    local stage=$1 log=$2 rc=0 t0 t1 secs real="" rss="" foot="" keep
     shift 2
     t0=$(date +%s)
     if [ "$(uname)" = Darwin ]; then
-        "${DIAR2_TIME:-/usr/bin/time}" -l "$@" >"$log" 2>&1 || rc=$?
-        real=$(awk '/ real / {print $1; exit}' "$log")
+        # time selbst unter LC_ALL=C (sonst "19,27 real" bei deutscher Locale);
+        # der gemessene Befehl behält die Locale des Aufrufers.
+        if [ -n "${LC_ALL+x}" ]; then keep=(env "LC_ALL=$LC_ALL"); else keep=(env -u LC_ALL); fi
+        LC_ALL=C "${DIAR2_TIME:-/usr/bin/time}" -l "${keep[@]}" "$@" >"$log" 2>&1 || rc=$?
+        # Komma oder Punkt annehmen, immer Punkt schreiben
+        real=$(awk '/ real / {v = $1; gsub(",", ".", v); print v; exit}' "$log")
         rss=$(awk '/maximum resident set size/ {printf "%.0f", $1/1048576}' "$log")
         foot=$(awk '/peak memory footprint/ {printf "%.0f", $1/1048576}' "$log")
     elif [ -x /usr/bin/time ]; then
@@ -185,6 +189,16 @@ h = hashlib.sha256()
 with open(src, "rb") as f:
     for chunk in iter(lambda: f.read(1 << 20), b""):
         h.update(chunk)
+def num(v):
+    """stages.tsv value -> JSON number with a decimal point (None for '-')."""
+    v = v.strip().replace(",", ".")
+    try:
+        return int(v)
+    except ValueError:
+        try:
+            return float(v)
+        except ValueError:
+            return None
 rows = [l.rstrip("\n").split("\t") for l in open(stages, encoding="utf-8")][1:]
 json.dump({
     "input": base, "input_sha256": h.hexdigest(),
@@ -195,8 +209,8 @@ json.dump({
     "diar_model_sha256": os.environ.get("DIAR2_MODEL_SHA256"),
     "device": os.environ.get("DIAR2_DEVICE"), "preset": os.environ.get("DIAR2_PRESET"),
     "second_opinion": os.environ.get("DIAR2_SECOND") == "1",
-    "stages": [dict(zip(["stage", "seconds", "max_rss_mb", "peak_footprint_mb", "exit"], r))
-               for r in rows],
+    "stages": [dict(zip(["stage", "seconds", "max_rss_mb", "peak_footprint_mb", "exit"],
+                        [r[0]] + [num(x) for x in r[1:]])) for r in rows],
 }, open(meta_path, "w", encoding="utf-8"), ensure_ascii=False, indent=1)
 PY
 run_stage f_merge "$work/f_merge.log" \
