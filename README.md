@@ -93,9 +93,9 @@ the others still run; a summary at the end lists each file as `fertig` (done), `
 ## Run time
 
 On an Apple M3 with 16 GB RAM, a 20.8-minute interview took 4.3 to 5.6 minutes without the second opinion
-(transcription about 3 to 4.5 minutes, alignment about 1 minute, diarization about 10 seconds). The second opinion
-adds roughly 40 seconds per audio minute (measured on the 1.5-minute self-test dialogue). Longer interviews scale
-roughly linearly; this is an estimate.
+(transcription about 3 to 4.5 minutes, alignment about 1 minute, diarization about 10 seconds). Longer interviews
+scale roughly linearly; this is an estimate. On the 1.5-minute synthetic self-test, the optional second opinion added
+about one minute. Its runtime on longer interviews has not yet been measured.
 
 ## Outputs
 
