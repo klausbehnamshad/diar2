@@ -33,8 +33,8 @@ def summary_lines(stdout):
 
 def test_batch_skips_done_continues_after_failure(env):  # noqa: F811
     home, _ = env
-    inbox = home / "Downloads" / "diar2_eingang"
-    outbox = home / "Downloads" / "diar2_ausgang"
+    inbox = home / "Downloads" / "diar2" / "input"
+    outbox = home / "Downloads" / "diar2" / "output"
     inbox.mkdir()
     make_audio(inbox / "1 kaputt.m4a")              # nemo stub fails on "kaputt"
     make_audio(inbox / "2 schon fertig.MOV", fmt="mov")
@@ -74,13 +74,13 @@ def test_batch_skips_done_continues_after_failure(env):  # noqa: F811
 
 def test_batch_name_with_spaces_and_umlaut(env):  # noqa: F811
     home, _ = env
-    inbox = home / "Downloads" / "diar2_eingang"
+    inbox = home / "Downloads" / "diar2" / "input"
     inbox.mkdir()
     make_audio(inbox / "Gespräch mit Frau K.mp4")
     r = run_diar2(env)
     assert r.returncode == 0, r.stdout + r.stderr
     assert summary_lines(r.stdout)[0].startswith("fertig")
-    out = home / "Downloads/diar2_ausgang/Gespräch mit Frau K"
+    out = home / "Downloads/diar2/output/Gespräch mit Frau K"
     assert (out / "Gespräch mit Frau K.diar2.txt").exists()
 
 
@@ -88,19 +88,21 @@ def test_empty_inbox_clear_message_exit_zero_and_folders_created(env):  # noqa: 
     home, _ = env
     r = run_diar2(env)
     assert r.returncode == 0, r.stderr
-    assert "keine Datei in" in r.stdout and "diar2_eingang" in r.stdout
-    assert (home / "Downloads/diar2_eingang").is_dir()
-    assert (home / "Downloads/diar2_ausgang").is_dir()
+    assert "keine Datei in" in r.stdout
+    # physical repo path, not the .ohtools link
+    assert f"{home}/Downloads/diar2/input" in r.stdout and ".ohtools" not in r.stdout
+    assert (home / "Downloads/diar2/input").is_dir()
+    assert (home / "Downloads/diar2/output").is_dir()
 
 
 def test_single_file_prefers_inbox_over_downloads(env):  # noqa: F811
     home, _ = env
-    inbox = home / "Downloads" / "diar2_eingang"
+    inbox = home / "Downloads" / "diar2" / "input"
     inbox.mkdir()
     make_audio(inbox / "probe interview.mp4", freq=500)
     r = run_diar2(env, "probe interview.mp4")
     assert r.returncode == 0, r.stdout + r.stderr
-    res = json.loads((home / "Downloads/diar2_ausgang/probe interview/probe interview.diar2.json")
+    res = json.loads((home / "Downloads/diar2/output/probe interview/probe interview.diar2.json")
                      .read_text())
     assert res["meta"]["input_sha256"] == sha(inbox / "probe interview.mp4")
     assert res["meta"]["input_sha256"] != sha(home / "Downloads" / "probe interview.mp4")
@@ -123,7 +125,7 @@ def test_env_overrides_folders(env):  # noqa: F811
     r = run_diar2(env)
     assert r.returncode == 0, r.stdout + r.stderr
     assert (home / "raus/x/x.diar2.json").exists()
-    assert not (home / "Downloads/diar2_ausgang").exists()
+    assert not (home / "Downloads/diar2/output").exists()
 
 
 def test_runs_under_caffeinate_on_macos(env):  # noqa: F811

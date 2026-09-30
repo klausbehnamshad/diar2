@@ -269,8 +269,10 @@ echo "geschrieben: $CONFIG (Gerät-Voreinstellung: $device_default)"
 
 mkdir -p "$OHTOOLS"
 # fester Eingang und Ausgang für den Alltag (legt diar2 sonst selbst an)
-mkdir -p "$HOME/Downloads/diar2_eingang" "$HOME/Downloads/diar2_ausgang"
-echo "Eingang: ~/Downloads/diar2_eingang   Ausgang: ~/Downloads/diar2_ausgang"
+# (input/ und output/ im physischen Repo-Ordner, beide in .gitignore)
+REPO_P="$(cd "$HERE" && pwd -P)"
+mkdir -p "$REPO_P/input" "$REPO_P/output"
+echo "Eingang: $REPO_P/input   Ausgang: $REPO_P/output"
 if [ "$HERE" != "$OHTOOLS/diar2" ]; then
     ln -sfn "$HERE" "$OHTOOLS/diar2"
 fi

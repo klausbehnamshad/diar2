@@ -1,3 +1,6 @@
 __pycache__/
 .pytest_cache/
 .DS_Store
+# Aufnahmen und Ergebnisse bleiben lokal (öffentliches Repository)
+/input/
+/output/

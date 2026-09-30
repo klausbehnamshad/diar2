@@ -35,9 +35,12 @@ Der Selbsttest setzt `DIAR2_DEVICE_DEFAULT=metal` nur, wenn Metal und CPU diesel
 
 ## Alltag
 
-1. Aufnahme (mp4, mov, m4a, wav) nach `~/Downloads/diar2_eingang` legen.
+1. Aufnahme (mp4, mov, m4a, wav) nach `~/Downloads/diar2/input` legen.
 2. Im Terminal `diar2` tippen.
-3. Ergebnis liegt in `~/Downloads/diar2_ausgang/NAME/` (NAME = Dateiname ohne Endung).
+3. Ergebnis liegt in `~/Downloads/diar2/output/NAME/` (NAME = Dateiname ohne Endung).
+
+`input/` und `output/` sind die Unterordner des Repo-Ordners (physischer Pfad, nicht der Link
+`~/Downloads/.ohtools/diar2`) und stehen in `.gitignore`: Aufnahmen und Transkripte kommen nie ins Repository.
 
 ## Aufruf
 
@@ -49,14 +52,14 @@ DIAR2_NAMES=Frau_K,Herr_M diar2 a.mp4    # Namen nach erstem Auftreten; "-" = sp
 ```
 
 - **Stapel:** `diar2` ohne Argument bearbeitet jede Datei im Eingang, für die es noch kein
-  `diar2_ausgang/NAME/NAME.diar2.json` gibt; fertige werden übersprungen. Scheitert eine Datei, läuft der
+  `output/NAME/NAME.diar2.json` gibt; fertige werden übersprungen. Scheitert eine Datei, läuft der
   Stapel weiter. Am Ende steht eine Übersicht mit einer Zeile pro Datei (fertig / übersprungen / FEHLER mit
   Log); der Exit-Code ist ungleich 0, wenn eine Datei gescheitert ist. Auf macOS läuft alles unter
   `caffeinate -i`, damit der Mac nicht einschläft.
 - **Originale** im Eingang werden nur gelesen, nie verschoben, verändert oder gelöscht.
-- **Ausgabe** pro Interview in `diar2_ausgang/NAME/`: `NAME.diar2.txt`, `.diar2.srt`, `.diar2.json`,
+- **Ausgabe** pro Interview in `output/NAME/`: `NAME.diar2.txt`, `.diar2.srt`, `.diar2.json`,
   `.hoerliste.txt`, `.diar2.stages.tsv`, `.nemotron.rttm`, `.diar2.rttm` (geglättet), bei Zweitmeinung
-  `.pyannote.rttm`. Zwischenstände und Logs in `diar2_ausgang/.work/NAME/`. Ein zweiter Aufruf setzt nach
+  `.pyannote.rttm`. Zwischenstände und Logs in `output/.work/NAME/`. Ein zweiter Aufruf setzt nach
   einem Abbruch an der unterbrochenen Stufe fort (`DIAR2_FRESH=1` rechnet alles neu).
 - **Ordner** per `DIAR2_IN` und `DIAR2_OUT` überschreibbar; beide legt diar2 selbst an.
 
@@ -84,9 +87,9 @@ Alle Schwellen der Glättung stehen oben in `diar2_merge.py` und lassen sich als
 PY=$(sed -n 's/^DIAR2_PYTHON=//p' ~/.config/diar2/paths.env)
 $PY ~/Downloads/.ohtools/diar2/eval_diar.py labels2rttm ~/Downloads/marken.txt ~/Downloads/_outputs/referenz.rttm
 $PY ~/Downloads/.ohtools/diar2/eval_diar.py der --ref ~/Downloads/_outputs/referenz.rttm \
-  --hyp "nemotron=$HOME/Downloads/diar2_ausgang/interview/interview.nemotron.rttm" \
-  --hyp "pyannote=$HOME/Downloads/diar2_ausgang/interview/interview.pyannote.rttm" \
-  --hyp "geglaettet=$HOME/Downloads/diar2_ausgang/interview/interview.diar2.rttm"
+  --hyp "nemotron=$HOME/Downloads/diar2/output/interview/interview.nemotron.rttm" \
+  --hyp "pyannote=$HOME/Downloads/diar2/output/interview/interview.pyannote.rttm" \
+  --hyp "geglaettet=$HOME/Downloads/diar2/output/interview/interview.diar2.rttm"
 ```
 
 (`interview` ist der Dateiname der Aufnahme ohne Endung.)

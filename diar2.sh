@@ -4,10 +4,10 @@
 # Laden (bash oder zsh, z. B. in ~/.bash_profile oder ~/.zshrc):
 #   source ~/Downloads/.ohtools/diar2/diar2.sh
 # Aufruf:
-#   diar2                                (alle neuen Dateien in ~/Downloads/diar2_eingang)
+#   diar2                                (alle neuen Dateien in input/ dieses Repo-Ordners)
 #   diar2 interview.mp4                  (eine Datei: erst im Eingang, dann ~/Downloads, oder absolut)
 #   DIAR2_SECOND=1 diar2                 (pyannote als Zweitmeinung)
-# Ergebnis je Interview in ~/Downloads/diar2_ausgang/NAME/.
+# Ergebnis je Interview in output/NAME/ dieses Repo-Ordners (z. B. ~/Downloads/diar2/output/NAME/).
 #
 # Fasst ~/Downloads/.ohtools/transkript-tools.sh nicht an. Jede Modellstufe
 # läuft als eigener Prozess, strikt nacheinander; Laufzeit und RAM-Spitze
@@ -33,7 +33,8 @@ unset _diar2_self _diar2_sourced
 # --- ausgeführt: die Pipeline -------------------------------------------------
 set -euo pipefail
 
-DIAR2_HOME="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# physischer Repo-Ordner (pwd -P), auch wenn über den Link ~/Downloads/.ohtools/diar2 gestartet
+DIAR2_HOME="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 DIAR2_CONFIG="${DIAR2_CONFIG:-$HOME/.config/diar2/paths.env}"
 # paths.env schreibt install_mac.sh: DIAR2_PYTHON, DIAR2_NEMO, DIAR2_MODEL,
 # DIAR2_NEMO_COMMIT, DIAR2_MODEL_SHA256; selftest_mac.sh ggf. DIAR2_DEVICE_DEFAULT.
@@ -48,8 +49,8 @@ DIAR2_DEVICE="${DIAR2_DEVICE:-${DIAR2_DEVICE_DEFAULT:-cpu}}"   # cpu | metal
 DIAR2_PRESET="${DIAR2_PRESET:-v3-offline}"                      # Nemotron-Offline-Geometrie
 DIAR2_SECOND="${DIAR2_SECOND:-0}"                               # 1 = pyannote Zweitmeinung
 DIAR2_NAMES="${DIAR2_NAMES:-Interviewer,Interviewee}"           # "-" = speaker_N behalten
-DIAR2_IN="${DIAR2_IN:-$HOME/Downloads/diar2_eingang}"         # Eingang (Originale bleiben)
-DIAR2_OUT="${DIAR2_OUT:-$HOME/Downloads/diar2_ausgang}"         # Ausgang, je Interview NAME/
+DIAR2_IN="${DIAR2_IN:-$DIAR2_HOME/input}"                      # Eingang (Originale bleiben; .gitignore)
+DIAR2_OUT="${DIAR2_OUT:-$DIAR2_HOME/output}"                    # Ausgang, je Interview NAME/ (.gitignore)
 DIAR2_IN_BASE="${DIAR2_IN_BASE:-$HOME/Downloads}"               # zweiter Suchort für diar2 DATEI
 DIAR2_FRESH="${DIAR2_FRESH:-0}"                                 # 1 = Zwischenstände neu rechnen
 # UNGEPRUEFT: HF-Repo-ID (huggingface.co war beim Bau nicht erreichbar); install_mac.sh lädt sie
