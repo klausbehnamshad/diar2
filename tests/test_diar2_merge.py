@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Tests for diar2_merge on synthetic words and RTTM (no models)."""
 
 import json

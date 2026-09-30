@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Tests for diar2_stages.fill_from_mlx (no models)."""
 
 import sys

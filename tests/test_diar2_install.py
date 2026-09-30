@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """install_mac.sh: source line goes into the login shell's startup file.
 
 Runs the exact block between the "shell-eintrag" markers of install_mac.sh

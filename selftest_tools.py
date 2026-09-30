@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: Apache-2.0
 """Helpers for selftest_mac.sh (standard library only).
 
   compose PLAN.tsv OUT.wav REF.rttm   place utterances on a timeline -> WAV + reference RTTM

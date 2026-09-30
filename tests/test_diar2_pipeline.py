@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """End-to-end run of diar2.sh with stand-in models (no downloads).
 
 mlx_whisper and whisperx are replaced by tiny fake modules on PYTHONPATH,

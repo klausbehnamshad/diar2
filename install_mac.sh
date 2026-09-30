@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: Apache-2.0
 # diar2 einmalig einrichten (idempotent). Nur macOS auf Apple Silicon.
 #
 #   bash install_mac.sh

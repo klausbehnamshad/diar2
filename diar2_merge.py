@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: Apache-2.0
 """diar2: assign speakers to words, smooth, and write the review list.
 
 Stages f-h of diar2. Standard library only, so it runs and is tested

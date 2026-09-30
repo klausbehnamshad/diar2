@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: Apache-2.0
 # diar2: Interview (mp4/mov/m4a/wav) -> Transkript mit Sprecherlabel pro Wort + Hörliste.
 #
 # Laden (bash oder zsh, z. B. in ~/.bash_profile oder ~/.zshrc):

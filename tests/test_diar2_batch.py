@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """diar2 ohne Argument: Stapel über den festen Eingang (Stub-Stufen, echtes ffmpeg)."""
 
 import hashlib

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Dry run of selftest_mac.sh on Linux with stand-ins for macOS tools and models.
 
 Checks the script's own logic (voices, composing, cpu/metal comparison,

@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: Apache-2.0
 """diar2 model stages. Each subcommand loads exactly one model, writes its
 result and exits, so the next stage starts with that memory released.
 

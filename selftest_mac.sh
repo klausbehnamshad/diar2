@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: Apache-2.0
 # diar2 Selbsttest nach install_mac.sh. Braucht keine echten Interviews:
 # erzeugt mit "say" ein ca. 2-minütiges Wechselgespräch zweier Stimmen mit
 # bekannten Sprechergrenzen (Referenz-RTTM) und prüft darauf

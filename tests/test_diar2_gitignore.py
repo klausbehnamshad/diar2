@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """input/ and output/ never reach the public repository."""
 
 import shutil

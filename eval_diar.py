@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: Apache-2.0
 """DER of one or more hypothesis RTTMs against a reference RTTM.
 
   eval_diar.py der --ref ref.rttm --hyp nemotron=a.rttm --hyp pyannote=b.rttm

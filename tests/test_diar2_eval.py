@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Tests for eval_diar.py and selftest_tools.py (synthetic data only)."""
 
 import array
