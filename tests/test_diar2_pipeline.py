@@ -156,6 +156,7 @@ def test_sourced_function_absolute_path(env, shell):
     r = run_diar2(env, str(home / "Downloads" / "probe interview.mp4"), shell=shell)
     assert r.returncode == 0, r.stderr + r.stdout
     assert "fertig:" in r.stdout
+    assert "  Wörter 6, Turns 2" in r.stdout
 
 
 def test_missing_file_and_bad_device(env):
@@ -206,5 +207,11 @@ def test_run_stage_with_german_time_output(env, force_comma):
                for st in meta["stages"])
     # time ran under LC_ALL=C, the measured command kept the caller's locale
     assert set((home / "time_locale").read_text().split()) == {"C"}
+    # f_merge.log ends with the macOS time output; the summary is still shown
+    log = (out / ".diar2_work" / "probe interview" / "f_merge.log").read_text()
+    assert log.rstrip().endswith("peak memory footprint")
+    summary = [l for l in r.stdout.splitlines() if l.startswith("  Wörter ")]
+    assert summary == ["  Wörter 6, Turns 2, Hörliste 0, Alignment whisperx"]
+    assert "peak memory footprint" not in r.stdout
     work = out / ".diar2_work" / "probe interview"
     assert (work / "nemo_locale").read_text().strip() == "C.UTF-8"

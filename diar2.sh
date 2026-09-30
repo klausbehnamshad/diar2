@@ -217,7 +217,8 @@ run_stage f_merge "$work/f_merge.log" \
     "$DIAR2_PYTHON" "$DIAR2_HOME/diar2_merge.py" --words "$words" --rttm "$nemo_rttm" \
     ${second_args[@]+"${second_args[@]}"} --out-prefix "$prefix" --names "$DIAR2_NAMES" --meta "$meta" ||
     fail_log "$work/f_merge.log"
-tail -n 1 "$work/f_merge.log" | sed 's/^/  /'
+# Zusammenfassung über ihr Präfix holen: time -l hängt seine Ausgabe hinten an
+{ grep '^Wörter ' "$work/f_merge.log" || true; } | tail -n 1 | sed 's/^/  /'
 
 echo "fertig:"
 for ext in diar2.txt diar2.srt diar2.json hoerliste.txt; do
