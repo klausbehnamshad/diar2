@@ -9,7 +9,8 @@ Hugging Face libraries to offline mode and disable Hugging Face and pyannote.aud
 online model access while leaving telemetry disabled. The self-test repeats the pipeline with offline flags and
 unreachable HTTP(S) proxies to check that the cached models work. The workflow has no upload step for recordings or
 transcripts. The default `input/` and `output/` folders inside this repository are listed in `.gitignore`; storage
-outside these folders needs its own protection.
+outside these folders needs its own protection. A full run on a 21-minute interview with Wi-Fi switched off completed
+on 2026-09-30.
 
 ## Example
 
@@ -62,7 +63,7 @@ The installation changes the following on your system:
 - the models in the caches of NeMo-Speech.cpp, Hugging Face and PyTorch, the NLTK sentence tokenizer data, and
   NeMo-Speech.cpp itself in `~/Downloads/.ohtools/nemo-speech`
 
-Other tools and conda environments stay untouched. Open a new Terminal window so that the command diar2 is available.
+Other tools and conda environments stay untouched. Open a new Terminal window so that the command `diar2` is available.
 
 The self-test creates a dialogue of about 1.5 minutes with two macOS voices and known speaker changes. It runs the
 diarization on CPU and Metal, the full pipeline with the second opinion, the error rate against the known reference,
@@ -76,7 +77,7 @@ git -C ~/Downloads/diar2 pull --ff-only
 bash ~/Downloads/diar2/selftest_mac.sh
 ```
 
-Do not run git clean -x in this folder: it deletes input/ and output/.
+Do not run `git clean -x` in this folder: it deletes input/ and output/.
 
 ## Everyday use
 
@@ -88,6 +89,13 @@ diar2 processes every recording in `input/` that has no finished result yet and 
 the others still run; a summary at the end lists each file as `fertig` (done), `übersprungen` (skipped) or `FEHLER`
 (error, with the path to its log). The originals in `input/` are only read. On macOS the Mac stays awake during a run
 (`caffeinate -i`). `diar2 FILE` processes a single recording.
+
+## Run time
+
+On an Apple M3 with 16 GB RAM, a 20.8-minute interview took 4.3 to 5.6 minutes without the second opinion
+(transcription about 3 to 4.5 minutes, alignment about 1 minute, diarization about 10 seconds). The second opinion
+adds roughly 40 seconds per audio minute (measured on the 1.5-minute self-test dialogue). Longer interviews scale
+roughly linearly; this is an estimate.
 
 ## Outputs
 
@@ -198,7 +206,7 @@ All settings are environment variables, for example `DIAR2_SECOND=1 diar2`.
 | `DIAR2_PRESET` | `v3-offline` | Nemotron configuration |
 | `DIAR2_FRESH` | `0` | `1` recomputes all stages |
 | `DIAR2_ONLINE` | `0` | `1` lifts the offline mode of the Hugging Face libraries; telemetry stays off |
-| `DIAR2_WHISPER_MODEL` | `mlx-community/whisper-large-v3-turbo` | Transcription model |
+| `DIAR2_WHISPER_MODEL` | `mlx-community/whisper-large-v3-turbo` | Transcription model. A model that is not in the cache needs one run with DIAR2_ONLINE=1. |
 | `DIAR2_CONFIG` | `~/.config/diar2/paths.env` | Paths written by the installation |
 | `DIAR2_GAP_TOLERANCE_S` | `0.5` | Largest gap to the nearest speaker for a word |
 | `DIAR2_SENTENCE_GAP_S` | `1.5` | Pause that ends a sentence |
