@@ -64,6 +64,16 @@ DIAR2_MODEL_SHA256="${DIAR2_MODEL_SHA256:-}"
 export DIAR2_LANG DIAR2_WHISPER_MODEL DIAR2_DEVICE DIAR2_PRESET DIAR2_SECOND DIAR2_MODEL \
     DIAR2_NEMO_COMMIT DIAR2_MODEL_SHA256
 
+# Datenschutz für jeden Lauf: Telemetrie immer aus (pyannote.audio 4.0.7 misst ab
+# Werk und sendet an otel.pyannote.ai), Hugging-Face-Bibliotheken offline.
+# DIAR2_ONLINE=1 hebt nur den Offline-Modus auf, nie die Telemetrie-Sperre.
+export HF_HUB_DISABLE_TELEMETRY=1 PYANNOTE_METRICS_ENABLED=false DO_NOT_TRACK=1
+if [ "${DIAR2_ONLINE:-0}" = 1 ]; then
+    unset HF_HUB_OFFLINE TRANSFORMERS_OFFLINE
+else
+    export HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1
+fi
+
 die() { echo "diar2: $*" >&2; exit 1; }
 
 # Der ganze Lauf unter caffeinate -i, damit der Mac nicht einschläft (nur macOS)

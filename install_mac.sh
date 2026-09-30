@@ -142,10 +142,9 @@ configure_nemo() {
     build_dir="$1/build/$2"
     drop_foreign_cache "$build_dir" "$brew_prefix"
     while read -r a; do args+=("$a"); done < <(configure_args "$brew_prefix" "$absl_dir")
-    # UNGEPRUEFT: dass CMAKE_IGNORE_PREFIX_PATH plus bereinigter PATH auf dem Mac
-    # bei aktiver conda base reichen (im Linux-Container nur mit Stubs getestet).
-    # Am Mac lief der Build mit deaktivierter conda base; der Weg mit aktiver
-    # conda base ist nur mit Stubs getestet.
+    # UNGEPRUEFT: dass CMAKE_IGNORE_PREFIX_PATH plus bereinigter PATH bei aktiver
+    # conda base reichen. Am Mac lief der Build mit deaktivierter conda base; der
+    # Weg mit aktiver conda base ist nur mit Stubs getestet.
     (cd "$1" && PATH=$(path_without_conda) scripts/configure.sh "$2" "${args[@]}")
     check_cache "$build_dir" "$brew_prefix"
 }
@@ -222,6 +221,11 @@ echo "Python: $PY"
 
 # --- 5. Modelle einmal laden -----------------------------------------------------------------
 step "5 Modelle laden (einmalig, danach offline)"
+# --- telemetrie: begin (tests/test_diar2_install.py führt diesen Block aus)
+# Laden braucht das Netz; die Telemetrie bleibt trotzdem aus (pyannote.audio
+# misst ab Werk, Hugging Face Hub ebenfalls).
+export HF_HUB_DISABLE_TELEMETRY=1 PYANNOTE_METRICS_ENABLED=false DO_NOT_TRACK=1
+# --- telemetrie: end
 "$NEMO" pull nemotron-3-diarization
 index="$NEMO_PREFIX/share/nemo-speech/model-index.json"
 read -r MODEL_REL MODEL_SHA256 < <("$PY" - "$index" <<'PY'

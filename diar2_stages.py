@@ -21,6 +21,12 @@ import sys
 import wave
 from pathlib import Path
 
+# Datenschutz: vor jedem Import von pyannote oder huggingface_hub (die stehen erst
+# in den Funktionen) und unbedingt, auch wenn der Aufrufer etwas anderes setzt.
+# pyannote.audio 4.0.7 sendet sonst Nutzungsdaten an otel.pyannote.ai.
+os.environ["PYANNOTE_METRICS_ENABLED"] = "false"
+os.environ["HF_HUB_DISABLE_TELEMETRY"] = "1"
+
 # Geprüft am Mac (M3, macOS 26.6.2, 30.09.2026): HF-Repo-ID, der Selbsttest lädt sie
 WHISPER_MODEL = "mlx-community/whisper-large-v3-turbo"
 PYANNOTE_MODEL = "pyannote/speaker-diarization-community-1"
