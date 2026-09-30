@@ -76,7 +76,7 @@ Alle Schwellen der Glättung stehen oben in `diar2_merge.py` und lassen sich als
 - Kurze Rückmeldungen (mhm, ja, genau …, höchstens 2 Wörter und 1,2 s) innerhalb eines fremden Satzes werden als Einwurf `[Interviewee: mhm]` in den laufenden Turn gesetzt statt als Sprecherwechsel gezählt.
 - Ein ganzer Satz nur aus solchen Wörtern („Ja.“), der direkt auf eine Frage („?“) des anderen Sprechers folgt, ist eine Antwort und bildet einen eigenen Turn, egal wer danach spricht. Er steht nicht als „sehr kurzer Turn“ in der Hörliste.
 - Sonst ist so ein Satz nur dann ein Einwurf, wenn der Sprecher des vorigen Turns direkt danach weiterspricht. Andernfalls beginnt er einen Turn seines eigenen Sprechers: „Ja. An Herrn Weber.“ bleibt eine Antwort.
-- Die Hörliste enthält Sprecherwechsel im Satz, sehr kurze Turns, Überlappungen und, bei Zweitmeinung, die Stellen, an denen Nemotron und pyannote uneins sind. Sortiert ist sie nach Dauer, die längste Stelle zuerst. Davor steht immer die Kontrolle der ersten 60 s (erster Sprecher = Interviewer).
+- Die Hörliste enthält Sprecherwechsel im Satz, sehr kurze Turns, Überlappungen und, bei Zweitmeinung, die Stellen, an denen Nemotron und pyannote uneins sind. Sortiert ist sie nach Dauer, die längste Stelle zuerst. Nicht gelistet werden Überlappungen ohne Wort, mit einem Einwurf, oder kürzer als 1 s mit nur einem Sprecher im Text (`DIAR2_OVERLAP_REVIEW_MIN_S`); sie stehen mit Grund in `.diar2.json` unter `hoerliste_ausgeblendet`, und der Kopf der Hörliste zählt sie. Davor steht immer die Kontrolle der ersten 60 s (erster Sprecher = Interviewer).
 
 ## Messen: DER gegen eine Handannotation
 

@@ -199,15 +199,85 @@ def test_mhm_mid_narration_after_earlier_question_stays_einwurf(tmp_path):
     assert res["sentences"][2]["kurzantwort"] is False
 
 
-def test_overlap_marked_on_word_and_listed(tmp_path):
+def _overlaps(res):
+    return [it for it in res["hoerliste"] if it["art"] == "Überlappung"]
+
+
+def test_overlap_short_one_speaker_is_hidden(tmp_path):
     words = seq("Das weiß ich nicht mehr so genau.", 0.0)
-    segs = [(0.0, 3.0, "speaker_1"), (0.7, 1.4, "speaker_2")]
+    segs = [(0.0, 3.0, "speaker_1"), (0.7, 1.4, "speaker_2")]   # 0.7 s
     res = run(tmp_path, words, segs)
     ov = [w for w in res["words"] if w["overlap"]]
     assert ov and all(set(w["overlap_speakers"]) == {"speaker_1", "speaker_2"} for w in ov)
-    items = [it for it in res["hoerliste"] if it["art"] == "Überlappung"]
-    assert len(items) == 1
-    assert items[0]["start"] == pytest.approx(0.7) and items[0]["end"] == pytest.approx(1.4)
+    assert _overlaps(res) == []
+    hidden = res["hoerliste_ausgeblendet"]
+    assert hidden == [{"start": 0.7, "end": 1.4, "art": "Überlappung",
+                       "grund": "kurz, ein Sprecher"}]          # no text kept
+
+
+def test_overlap_without_word_is_hidden(tmp_path):
+    words = seq("Erster Satz.", 0.0) + seq("Zweiter Satz.", 3.6)
+    segs = [(0.0, 3.5, "speaker_1"), (3.0, 4.5, "speaker_2")]  # overlap 3.0-3.5 in a pause
+    res = run(tmp_path, words, segs)
+    assert _overlaps(res) == []
+    assert [h["grund"] for h in res["hoerliste_ausgeblendet"]] == ["ohne Wort"]
+
+
+def test_overlap_with_einwurf_is_hidden(tmp_path):
+    a = seq("Mein Vater hat in der Fabrik gearbeitet", 0.0)
+    mhm = ("mhm", a[-1][2] + 0.05, a[-1][2] + 0.45)
+    b = seq("und meine Mutter war zuhause.", mhm[2] + 0.05)
+    segs = [(0.0, 10.0, "speaker_1"), (mhm[1], mhm[2], "speaker_2")]
+    res = run(tmp_path, a + [mhm] + b, segs)
+    assert res["words"][len(a)]["einwurf"]
+    assert _overlaps(res) == []
+    assert [h["grund"] for h in res["hoerliste_ausgeblendet"]] == ["Einwurf"]
+
+
+def test_overlap_two_speakers_under_threshold_is_listed(tmp_path):
+    words = [("Ich", 0.0, 0.3), ("war", 0.35, 0.65), ("dort.", 0.7, 1.1),
+             ("Wann", 1.0, 1.3), ("genau?", 1.35, 1.7)]
+    segs = [(0.0, 1.2, "speaker_1"), (0.8, 1.8, "speaker_2")]   # 0.4 s
+    res = run(tmp_path, words, segs)
+    ov = _overlaps(res)
+    assert len(ov) == 1 and ov[0]["text"] == "dort. Wann"
+    assert ov[0]["end"] - ov[0]["start"] < m.OVERLAP_REVIEW_MIN_S
+    assert res["hoerliste_ausgeblendet"] == []
+
+
+def test_overlap_one_speaker_from_threshold_is_listed(tmp_path):
+    words = seq("Das weiß ich nicht mehr so genau.", 0.0)
+    segs = [(0.0, 3.0, "speaker_1"), (0.9, 1.9, "speaker_2")]   # exactly 1.0 s
+    res = run(tmp_path, words, segs)
+    ov = _overlaps(res)
+    assert len(ov) == 1 and ov[0]["start"] == pytest.approx(0.9)
+    assert ov[0]["end"] == pytest.approx(1.9)
+
+
+def test_review_header_counts_hidden_overlaps(tmp_path):
+    s1 = seq("Das weiß ich nicht mehr so genau.", 0.0)            # ends 2.45
+    a = seq("Mein Vater hat in der Fabrik gearbeitet", 5.0)
+    mhm = ("mhm", a[-1][2] + 0.05, a[-1][2] + 0.45)
+    b = seq("und meine Mutter war zuhause.", mhm[2] + 0.05)
+    segs = [(0.0, 3.5, "speaker_1"), (0.7, 1.4, "speaker_2"),   # kurz, ein Sprecher
+            (3.0, 3.5, "speaker_2"),                             # ohne Wort
+            (5.0, 15.0, "speaker_1"), (mhm[1], mhm[2], "speaker_2")]  # Einwurf
+    res = run(tmp_path, s1 + a + [mhm] + b, segs)
+    assert sorted(h["grund"] for h in res["hoerliste_ausgeblendet"]) == [
+        "Einwurf", "kurz, ein Sprecher", "ohne Wort"]
+    head = (tmp_path / "out.hoerliste.txt").read_text().splitlines()
+    assert head[2] == ("Ausgeblendete Überlappungen: 3 (ohne Wort 1, Einwurf 1, "
+                       "kurz/ein Sprecher 1), siehe diar2.json")
+
+
+def test_overlap_review_threshold_from_env(tmp_path, monkeypatch):
+    monkeypatch.setenv("DIAR2_OVERLAP_REVIEW_MIN_S", "0.5")
+    m.apply_env_overrides()
+    assert m.OVERLAP_REVIEW_MIN_S == 0.5
+    words = seq("Das weiß ich nicht mehr so genau.", 0.0)
+    res = run(tmp_path, words, [(0.0, 3.0, "speaker_1"), (0.7, 1.4, "speaker_2")])
+    assert len(_overlaps(res)) == 1                       # 0.7 s now reaches the threshold
+    assert res["hoerliste_ausgeblendet"] == []
 
 
 def test_short_overlap_below_threshold_ignored(tmp_path):

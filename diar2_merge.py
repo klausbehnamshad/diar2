@@ -42,6 +42,9 @@ SPLIT_MIN_S = 0.8
 SHORT_TURN_S = 1.0
 # Overlap regions (from the RTTM) shorter than this are ignored.
 OVERLAP_MIN_S = 0.2
+# An overlap whose words all have one speaker goes on the review list only
+# from this length on (shorter ones are hidden as "kurz, ein Sprecher").
+OVERLAP_REVIEW_MIN_S = 1.0
 # Disagreement spans with the second opinion shorter than this are ignored;
 # neighbouring spans closer than MERGE_GAP_S are merged.
 DISAGREE_MIN_S = 0.3
@@ -64,7 +67,7 @@ BACKCHANNEL_TOKENS = {
 _THRESHOLDS = [
     "GAP_TOLERANCE_S", "SENTENCE_GAP_S", "BACKCHANNEL_MAX_S",
     "BACKCHANNEL_MAX_WORDS", "SPLIT_MIN_WORDS", "SPLIT_MIN_S", "SHORT_TURN_S",
-    "OVERLAP_MIN_S", "DISAGREE_MIN_S", "MERGE_GAP_S", "CHECK_HEAD_S",
+    "OVERLAP_MIN_S", "OVERLAP_REVIEW_MIN_S", "DISAGREE_MIN_S", "MERGE_GAP_S", "CHECK_HEAD_S",
     "SRT_MAX_CUE_S", "ESTIMATE_MAX_S",
 ]
 
@@ -504,8 +507,21 @@ def disagreements(words, second_segs, primary_segs) -> list:
 
 # --- g: review list -------------------------------------------------------------
 
-def review_list(sentences, turns, segs, words, names, second_spans=None) -> list:
-    items = []
+def overlap_hidden_reason(ws, start, end):
+    """Why an overlap region need not be listened to, or None to list it."""
+    if not ws:
+        return "ohne Wort"
+    if any(w.backchannel for w in ws):
+        return "Einwurf"
+    # compare in milliseconds like the RTTM, so 1.000 s is not 0.999... s
+    if round(end - start, 3) < OVERLAP_REVIEW_MIN_S and len({w.speaker for w in ws}) == 1:
+        return "kurz, ein Sprecher"
+    return None
+
+
+def review_list(sentences, turns, segs, words, names, second_spans=None) -> tuple:
+    """Review items (sorted by duration) and the overlaps hidden from them."""
+    items, hidden = [], []
     by_origin = {}
     for s in sentences:
         if s.raw_switch:
@@ -523,13 +539,18 @@ def review_list(sentences, turns, segs, words, names, second_spans=None) -> list
             items.append({"art": "sehr kurzer Turn", "start": t["start"], "end": t["end"],
                           "text": f"{names.get(t['speaker'], t['speaker'])}: {text}"})
     for a, b in overlap_regions(segs):
-        text = join_words(w.text for w in words if a <= w.mid < b)
-        items.append({"art": "Überlappung", "start": a, "end": b, "text": text})
+        ws = [w for w in words if a <= w.mid < b]
+        reason = overlap_hidden_reason(ws, a, b)
+        if reason:
+            hidden.append({"start": a, "end": b, "art": "Überlappung", "grund": reason})
+        else:
+            items.append({"art": "Überlappung", "start": a, "end": b,
+                          "text": join_words(w.text for w in ws)})
     for a, b in second_spans or []:
         text = join_words(w.text for w in words if a <= w.mid <= b)
         items.append({"art": "Nemotron und pyannote uneins", "start": a, "end": b, "text": text})
     items.sort(key=lambda x: (-(x["end"] - x["start"]), x["start"]))
-    return items
+    return items, hidden
 
 
 # --- names ------------------------------------------------------------------------
@@ -589,13 +610,20 @@ def render_srt(sentences, names) -> str:
     return "\n".join(out)
 
 
-def render_review(items, names, segs, words) -> str:
+def render_review(items, names, segs, words, hidden=()) -> str:
     order = [sp for sp in names]
+
+    def count(reason):
+        return sum(1 for h in hidden if h["grund"] == reason)
+
     head_end = min(CHECK_HEAD_S, max([s.end for s in segs] + [w.end for w in words] + [0.0]))
     first = order[0] if order else "?"
     lines = [
         "diar2 Hörliste",
         f"Einträge: {len(items)} (plus Kontrolle der ersten {int(CHECK_HEAD_S)} s)",
+        f"Ausgeblendete Überlappungen: {len(hidden)} "
+        f"(ohne Wort {count('ohne Wort')}, Einwurf {count('Einwurf')}, "
+        f"kurz/ein Sprecher {count('kurz, ein Sprecher')}), siehe diar2.json",
         "",
         f"KONTROLLE  {ts(0)} - {ts(head_end)}  ({head_end:.1f} s)  "
         f"Zuordnung prüfen: {names.get(first, first)} = {first} (spricht zuerst)"
@@ -644,7 +672,7 @@ def run(words_json, rttm, out_prefix, second_rttm=None, names_opt="Interviewer,I
     second_spans = None
     if second_rttm:
         second_spans = disagreements(words, read_rttm(second_rttm), segs)
-    items = review_list(sentences, turns, segs, words, names, second_spans)
+    items, hidden = review_list(sentences, turns, segs, words, names, second_spans)
 
     out_prefix = str(out_prefix)
     result = {
@@ -667,10 +695,12 @@ def run(words_json, rttm, out_prefix, second_rttm=None, names_opt="Interviewer,I
                                  for e in t["einwuerfe"]]} for t in turns],
         "hoerliste": [dict(it, start=round(it["start"], 3), end=round(it["end"], 3))
                       for it in items],
+        "hoerliste_ausgeblendet": [dict(h, start=round(h["start"], 3), end=round(h["end"], 3))
+                                   for h in hidden],
     }
     Path(out_prefix + ".diar2.srt").write_text(render_srt(sentences, names), encoding="utf-8")
     Path(out_prefix + ".diar2.txt").write_text(render_txt(turns, names), encoding="utf-8")
-    Path(out_prefix + ".hoerliste.txt").write_text(render_review(items, names, segs, words),
+    Path(out_prefix + ".hoerliste.txt").write_text(render_review(items, names, segs, words, hidden),
                                                    encoding="utf-8")
     write_rttm(out_prefix + ".diar2.rttm", smoothed_segments(turns, sentences))
     # written last: diar2 treats an existing .diar2.json as "fertig"
