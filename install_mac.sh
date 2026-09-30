@@ -76,6 +76,77 @@ done
 
 # --- 3. NeMo-Speech.cpp ----------------------------------------------------------------
 step "3 NeMo-Speech.cpp @ ${NEMO_COMMIT:0:12} bauen"
+# --- cmake-hilfen: begin (tests/test_diar2_install.py führt diesen Block aus)
+# Eine aktive conda-Umgebung (z. B. anaconda base mit abseil) darf nicht in den
+# Build geraten: sentencepiece kommt aus Homebrew, also muss abseil es auch.
+# Belegt am Mac: absl_DIR=/opt/anaconda3/lib/cmake/absl -> Linkfehler.
+# conda_roots: alle conda-Wurzeln (conda info --base, CONDA_PREFIX)
+conda_roots() {
+    {
+        if [ -n "${CONDA:-}" ]; then "$CONDA" info --base 2>/dev/null || true; fi
+        if [ -n "${CONDA_PREFIX:-}" ]; then echo "$CONDA_PREFIX"; fi
+    } | awk 'NF && !seen[$0]++'
+}
+# path_without_conda: PATH ohne Einträge unter einer conda-Wurzel
+path_without_conda() {
+    local roots out="" dir root keep
+    roots=$(conda_roots)
+    local IFS=:
+    for dir in $PATH; do
+        keep=1
+        while read -r root; do
+            case "$dir" in "$root" | "$root"/*) [ -n "$root" ] && keep=0 ;; esac
+        done <<<"$roots"
+        if [ "$keep" = 1 ]; then out="${out:+$out:}$dir"; fi
+    done
+    echo "$out"
+}
+# cache_value CACHE KEY: Wert eines Eintrags in CMakeCache.txt
+cache_value() { sed -n "s/^$2:[A-Z]*=//p" "$1" 2>/dev/null | head -n 1 || true; }
+under() { case "$1" in "$2"/*) return 0 ;; *) return 1 ;; esac; }
+# drop_foreign_cache BUILD BREW: Build-Ordner löschen, wenn sein Cache absl
+# oder sentencepiece außerhalb von Homebrew gefunden hat
+drop_foreign_cache() {
+    local cache="$1/CMakeCache.txt" absl sp
+    [ -f "$cache" ] || return 0
+    absl=$(cache_value "$cache" absl_DIR)
+    sp=$(cache_value "$cache" SENTENCEPIECE_LIB)
+    if ! under "$absl" "$2" || ! under "$sp" "$2"; then
+        echo "alter Build-Ordner mit fremden Pfaden verworfen (absl_DIR=${absl:-leer}, SENTENCEPIECE_LIB=${sp:-leer})"
+        rm -rf "$1"
+    fi
+}
+# configure_args BREW ABSL: -D-Optionen für scripts/configure.sh, eine je Zeile
+configure_args() {
+    local ignore
+    ignore=$(conda_roots | paste -sd ';' -)
+    echo "-DCMAKE_PREFIX_PATH=$1"
+    echo "-Dabsl_DIR=$2"
+    echo "-DCMAKE_IGNORE_PREFIX_PATH=$ignore"
+}
+# check_cache BUILD BREW: nach dem Konfigurieren müssen beide aus Homebrew kommen
+check_cache() {
+    local cache="$1/CMakeCache.txt" absl sp
+    absl=$(cache_value "$cache" absl_DIR)
+    sp=$(cache_value "$cache" SENTENCEPIECE_LIB)
+    if ! under "$absl" "$2" || ! under "$sp" "$2"; then
+        die "absl_DIR=${absl:-leer} und SENTENCEPIECE_LIB=${sp:-leer} müssen unter $2 liegen"
+    fi
+}
+# configure_nemo SRC PRESET: fremden Cache verwerfen, konfigurieren, prüfen
+configure_nemo() {
+    local brew_prefix absl_dir build_dir args=() a
+    brew_prefix=$(brew --prefix)
+    absl_dir="$(brew --prefix abseil)/lib/cmake/absl"
+    build_dir="$1/build/$2"
+    drop_foreign_cache "$build_dir" "$brew_prefix"
+    while read -r a; do args+=("$a"); done < <(configure_args "$brew_prefix" "$absl_dir")
+    # UNGEPRUEFT: dass CMAKE_IGNORE_PREFIX_PATH plus bereinigter PATH auf dem Mac
+    # bei aktiver conda base reichen (im Linux-Container nur mit Stubs getestet)
+    (cd "$1" && PATH=$(path_without_conda) scripts/configure.sh "$2" "${args[@]}")
+    check_cache "$build_dir" "$brew_prefix"
+}
+# --- cmake-hilfen: end
 src="$NEMO_PREFIX/src"
 if [ -x "$NEMO_PREFIX/bin/nemo-speech" ] && [ "$(cat "$NEMO_PREFIX/.commit" 2>/dev/null)" = "$NEMO_COMMIT" ]; then
     echo "bereits gebaut: $("$NEMO_PREFIX/bin/nemo-speech" --version)"
@@ -93,11 +164,12 @@ else
     fi
     [ "$(git -C "$src" rev-parse HEAD)" = "$NEMO_COMMIT" ] || die "Commit stimmt nicht"
     git -C "$src" submodule update --init --depth 1 ggml
-    # configure.sh legt für metal-* die ggml-Patchserie an (idempotent). UNGEPRUEFT:
-    # der Metal-Build selbst (im Linux-Container nur cpu-diar gebaut).
-    (cd "$src" && scripts/configure.sh "$NEMO_PRESET")
+    # configure.sh legt für metal-* die ggml-Patchserie an (idempotent) und reicht
+    # die -D-Optionen an cmake weiter. UNGEPRUEFT: der Metal-Build selbst
+    # (im Linux-Container nur cpu-diar gebaut).
+    configure_nemo "$src" "$NEMO_PRESET"
     jobs=$(sysctl -n hw.perflevel0.physicalcpu 2>/dev/null || echo 4)
-    (cd "$src" && cmake --build --preset "$NEMO_PRESET" --parallel "$jobs") \
+    (cd "$src" && PATH=$(path_without_conda) cmake --build --preset "$NEMO_PRESET" --parallel "$jobs") \
         >"$NEMO_PREFIX/build.log" 2>&1 ||
         { tail -n 30 "$NEMO_PREFIX/build.log" >&2; die "Build fehlgeschlagen, Log: $NEMO_PREFIX/build.log"; }
     cmake --install "$src/build/$NEMO_PRESET" --prefix "$NEMO_PREFIX" >/dev/null
@@ -113,8 +185,33 @@ if "$CONDA" env list | awk '{print $1}' | grep -qx "$CONDA_ENV"; then
 else
     "$CONDA" create -y -q -n "$CONDA_ENV" "python=$PY_VERSION"
 fi
-PY="$("$CONDA" run -n "$CONDA_ENV" python -c 'import sys; print(sys.executable)' | tail -n 1)"
-[ -x "$PY" ] || die "Python der Umgebung $CONDA_ENV nicht gefunden"
+# --- python-pfad: begin (tests/test_diar2_install.py führt diesen Block aus)
+# env_python ENV: setzt PY auf das Python der conda-Umgebung ENV.
+# conda run kann Zusatzzeilen oder eine Leerzeile ausgeben (am Mac: PY war
+# leer, obwohl die Umgebung existierte). Reihenfolge: letzte nicht leere
+# stdout-Zeile von conda run, die mit / beginnt; sonst <conda info --base>/envs;
+# sonst jeder Eintrag aus conda config --show envs_dirs; sonst Abbruch mit der
+# rohen conda-run-Ausgabe.
+env_python() {
+    local out err base dir cand
+    err=$(mktemp)
+    out=$("$CONDA" run -n "$1" python -c 'import sys; print(sys.executable)' 2>"$err" || true)
+    PY=$(printf '%s\n' "$out" | tr -d '\r' |
+        awk '{sub(/[ \t]+$/, "")} NF && /^\// {last=$0} END {print last}')
+    if [ -n "$PY" ] && [ -x "$PY" ]; then rm -f "$err"; return 0; fi
+    base=$("$CONDA" info --base 2>/dev/null | tr -d '\r' | awk 'NF {last=$0} END {print last}' || true)
+    cand="$base/envs/$1/bin/python"
+    if [ -n "$base" ] && [ -x "$cand" ]; then PY=$cand; rm -f "$err"; return 0; fi
+    while read -r dir; do
+        cand="$dir/$1/bin/python"
+        if [ -n "$dir" ] && [ -x "$cand" ]; then PY=$cand; rm -f "$err"; return 0; fi
+    done < <("$CONDA" config --show envs_dirs 2>/dev/null | tr -d '\r' |
+        sed -n 's/^[[:space:]]*-[[:space:]]*//p')
+    die "Python der Umgebung $1 nicht gefunden; conda run gab aus: [$(printf '%s' "$out" | tr '\n' '|')] stderr: [$(tr '\n' '|' <"$err")]"
+}
+# --- python-pfad: end
+env_python "$CONDA_ENV"
+echo "Python: $PY"
 # shellcheck disable=SC2086  # Paketliste bewusst getrennt
 # UNGEPRUEFT: Auflösung dieser Pins auf macOS arm64 (whisperx 3.8.6 zieht torch ~=2.8)
 "$PY" -m pip install -q $PIP_PACKAGES

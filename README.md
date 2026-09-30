@@ -28,6 +28,9 @@ bash selftest_mac.sh     # ~/Downloads/_outputs/diar2_selftest.txt
 `~/.bash_profile` bei bash, `~/.zshrc` bei zsh (nach `$SHELL`), bei unbekannter Shell in beide. Eine vorhandene Zeile mit
 `.ohtools/diar2/diar2.sh` wird erkannt, es kommt nichts doppelt.
 `transkript-tools.sh` und die conda-Umgebung `whisperx` bleiben unberührt.
+NeMo-Speech.cpp wird gegen Homebrew gebaut (abseil, sentencepiece), auch wenn eine conda-Umgebung aktiv ist:
+conda-Wurzeln sind für CMake ausgeblendet, ein alter Build mit fremden Pfaden wird verworfen, und nach dem
+Konfigurieren wird geprüft, dass `absl_DIR` und `SENTENCEPIECE_LIB` unter `brew --prefix` liegen.
 Der Selbsttest setzt `DIAR2_DEVICE_DEFAULT=metal` nur, wenn Metal und CPU dieselben Segmente liefern.
 
 ## Aufruf
